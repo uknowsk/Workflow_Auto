@@ -717,6 +717,7 @@ code {
 
 /* 진행 막대 (순위 등) */
 .ui-bar {
+  display: block;
   height: 6px;
   background: var(--surface-2);
   border-radius: 3px;

@@ -3,6 +3,24 @@
 // 워크플로우 레시피. 앱 여러 개를 엮은 흐름을 이름 붙여 저장해 두고 버튼 하나로 재실행합니다.
 import { useEffect, useState } from "react";
 import { api, Recipe, Run, getSession } from "@/lib/api";
+import {
+  Alert,
+  Badge,
+  Button,
+  Card,
+  Empty,
+  Field,
+  IconTile,
+  Muted,
+  PageTitle,
+  Pre,
+  Row,
+  Section,
+  SectionHead,
+  Tag,
+  Textarea,
+  type Tone,
+} from "@/components/ui";
 
 const RUN_LABEL: Record<Run["status"], string> = {
   queued: "대기 중",
@@ -12,6 +30,16 @@ const RUN_LABEL: Record<Run["status"], string> = {
   succeeded: "완료",
   failed: "실패",
   rejected: "취소함",
+};
+
+const RUN_TONE: Record<Run["status"], Tone> = {
+  queued: "neutral",
+  planning: "accent",
+  awaiting_approval: "warn",
+  running: "accent",
+  succeeded: "ok",
+  failed: "crit",
+  rejected: "neutral",
 };
 
 export default function Recipes() {
@@ -56,128 +84,158 @@ export default function Recipes() {
 
   return (
     <>
-      <h3>워크플로우 레시피</h3>
-      <p className="muted">
+      <PageTitle
+        title="워크플로우 레시피"
+        sub={`저장한 레시피 ${recipes.length}개 · 앱 여러 개를 엮은 흐름을 버튼 하나로 다시 돌립니다`}
+      />
+
+      <Muted style={{ marginBottom: "var(--space-5)" }}>
         카드가 앱 하나라면, 레시피는 <b>앱 여러 개를 엮은 카드</b>입니다. 요청을 한 번
         실행해서 잘 나왔으면 <a href="/">내 에이전트</a> 화면에서 그 흐름을 레시피로
-        저장해 두세요. 다음부터는 여기서 버튼 하나로 똑같이 돌아갑니다.
-      </p>
+        저장해 두세요.
+      </Muted>
 
-      {error && <div className="box" style={{ color: "#b91c1c" }}>{error}</div>}
-
-      {recipes.length === 0 && (
-        <div className="box muted">아직 저장된 레시피가 없습니다.</div>
+      {error && (
+        <Alert tone="crit" style={{ marginBottom: "var(--space-4)" }}>
+          {error}
+        </Alert>
       )}
 
-      {recipes.map((recipe) => (
-        <div className="box" key={recipe.id}>
-          <div className="row" style={{ justifyContent: "space-between" }}>
-            <b>
-              {recipe.icon} {recipe.title}
-            </b>
-            <span className="row">
-              <span className="tag">{recipe.steps.length}단계</span>
-              <span className="tag">{recipe.run_count}번 실행</span>
-              <button
-                className="ghost"
-                onClick={() => {
-                  if (confirm(`'${recipe.title}' 레시피를 지울까요?`))
-                    api.deleteRecipe(recipe.id).then(reload);
-                }}
-              >
-                삭제
-              </button>
-            </span>
-          </div>
+      {recipes.length === 0 ? (
+        <Empty>
+          아직 저장된 레시피가 없습니다. 요청을 한 번 실행해 결과가 마음에 들면
+          &ldquo;이 흐름을 레시피로 저장&rdquo;을 눌러 보세요.
+        </Empty>
+      ) : (
+        recipes.map((recipe) => (
+          <Card key={recipe.id} style={{ marginBottom: "var(--space-3)" }}>
+            <Row between nowrap>
+              <Row nowrap>
+                <IconTile>{recipe.icon || "🔁"}</IconTile>
+                <b>{recipe.title}</b>
+              </Row>
+              <Row nowrap>
+                <Tag>{recipe.steps.length}단계</Tag>
+                <Tag>{recipe.run_count}번 실행</Tag>
+                <Button
+                  variant="danger"
+                  small
+                  aria-label={`${recipe.title} 레시피 삭제`}
+                  onClick={() => {
+                    if (confirm(`'${recipe.title}' 레시피를 지울까요?`))
+                      api.deleteRecipe(recipe.id).then(reload);
+                  }}
+                >
+                  삭제
+                </Button>
+              </Row>
+            </Row>
 
-          {recipe.description && <div className="muted">{recipe.description}</div>}
+            {recipe.description && (
+              <Muted style={{ marginTop: "var(--space-2)" }}>{recipe.description}</Muted>
+            )}
 
-          <ol className="muted" style={{ marginTop: 8 }}>
-            {recipe.steps.map((step, i) => (
-              <li key={i}>
-                <b>{step.app_name}</b> · {step.tool}
-              </li>
-            ))}
-          </ol>
-
-          {open === recipe.id ? (
-            <div style={{ marginTop: 8 }}>
-              {recipe.variables.map((name) => (
-                <div key={name}>
-                  <label>{name}</label>
-                  <textarea
-                    rows={2}
-                    value={values[name] || ""}
-                    onChange={(e) => setValues({ ...values, [name]: e.target.value })}
-                  />
-                </div>
+            {/* 어떤 앱을 어떤 순서로 부르는지 한 줄로 보여 줍니다. */}
+            <Row style={{ marginTop: "var(--space-3)" }}>
+              {recipe.steps.map((step, i) => (
+                <span key={i} className="ui-row" style={{ gap: "var(--space-1)" }}>
+                  {i > 0 && <span className="ui-muted">→</span>}
+                  <Tag>
+                    {step.app_name} · {step.tool}
+                  </Tag>
+                </span>
               ))}
-              <div className="row" style={{ marginTop: 8 }}>
-                <button onClick={() => start(recipe)}>실행</button>
-                <button className="ghost" onClick={() => setOpen("")}>
-                  취소
-                </button>
+            </Row>
+
+            {open === recipe.id ? (
+              <div style={{ marginTop: "var(--space-4)" }}>
+                {recipe.variables.map((name) => (
+                  <Field key={name} label={name} htmlFor={`var-${recipe.id}-${name}`}>
+                    <Textarea
+                      id={`var-${recipe.id}-${name}`}
+                      rows={2}
+                      value={values[name] || ""}
+                      onChange={(e) => setValues({ ...values, [name]: e.target.value })}
+                    />
+                  </Field>
+                ))}
+                <Row>
+                  <Button onClick={() => start(recipe)}>실행</Button>
+                  <Button variant="ghost" onClick={() => setOpen("")}>
+                    취소
+                  </Button>
+                </Row>
               </div>
-            </div>
-          ) : (
-            <div style={{ marginTop: 8 }}>
-              <button
-                onClick={() => {
-                  setValues({});
-                  if (recipe.variables.length === 0) start(recipe);
-                  else setOpen(recipe.id);
-                }}
-              >
-                {recipe.variables.length === 0 ? "실행" : "값 넣고 실행"}
-              </button>
-            </div>
-          )}
-        </div>
-      ))}
+            ) : (
+              <Row style={{ marginTop: "var(--space-3)" }}>
+                <Button
+                  onClick={() => {
+                    setValues({});
+                    if (recipe.variables.length === 0) start(recipe);
+                    else setOpen(recipe.id);
+                  }}
+                >
+                  {recipe.variables.length === 0 ? "실행" : "값 넣고 실행"}
+                </Button>
+              </Row>
+            )}
+          </Card>
+        ))
+      )}
 
       {run && (
-        <div className="box">
-          <div className="row">
-            <b>실행 결과</b>
-            <span className="tag">{RUN_LABEL[run.status]}</span>
-          </div>
+        <Section>
+          <SectionHead
+            label="실행 결과"
+            action={<Badge tone={RUN_TONE[run.status]}>{RUN_LABEL[run.status]}</Badge>}
+          />
+          <Card>
+            {run.status === "awaiting_approval" && (
+              <>
+                <p style={{ marginTop: 0 }}>
+                  되돌릴 수 없는 작업이 들어 있어 확인이 필요합니다. 이대로 진행할까요?
+                </p>
+                <ul style={{ paddingLeft: 18 }}>
+                  {run.plan.map((step, i) => (
+                    <li key={i}>
+                      {step.requires_confirmation ? "⚠️ " : ""}
+                      <b>{step.app}</b> · {step.tool}
+                    </li>
+                  ))}
+                </ul>
+                <Row>
+                  <Button onClick={() => api.approveRun(run.id).then(setRun)}>
+                    이대로 진행
+                  </Button>
+                  <Button variant="ghost" onClick={() => api.rejectRun(run.id).then(setRun)}>
+                    취소
+                  </Button>
+                </Row>
+              </>
+            )}
 
-          {run.status === "awaiting_approval" && (
-            <div style={{ marginTop: 10 }}>
-              <p>
-                되돌릴 수 없는 작업이 들어 있어 확인이 필요합니다. 이대로 진행할까요?
-              </p>
-              <ul>
-                {run.plan.map((step, i) => (
+            {run.steps?.length > 0 && (
+              <ul className="ui-list">
+                {run.steps.map((step, i) => (
                   <li key={i}>
-                    {step.requires_confirmation ? "⚠️ " : ""}
-                    <b>{step.app}</b> · {step.tool}
+                    <span className={step.error ? "ui-dot ui-dot--crit" : "ui-dot ui-dot--ok"} />
+                    <div className="ui-list__main">
+                      <span className="ui-list__title">
+                        {step.app} · {step.tool}
+                      </span>
+                    </div>
                   </li>
                 ))}
               </ul>
-              <div className="row">
-                <button onClick={() => api.approveRun(run.id).then(setRun)}>
-                  이대로 진행
-                </button>
-                <button className="ghost" onClick={() => api.rejectRun(run.id).then(setRun)}>
-                  취소
-                </button>
-              </div>
-            </div>
-          )}
-
-          {run.steps?.length > 0 && (
-            <ul className="muted">
-              {run.steps.map((step, i) => (
-                <li key={i}>
-                  {step.error ? "⚠️" : "✅"} {step.app} · {step.tool}
-                </li>
-              ))}
-            </ul>
-          )}
-          {run.result_text && <pre>{run.result_text}</pre>}
-          {run.error && <pre style={{ color: "#b91c1c" }}>{run.error}</pre>}
-        </div>
+            )}
+            {run.result_text && <Pre>{run.result_text}</Pre>}
+            {run.error && (
+              <Alert tone="crit" style={{ marginTop: "var(--space-3)" }}>
+                {run.error}
+              </Alert>
+            )}
+          </Card>
+        </Section>
       )}
     </>
   );
