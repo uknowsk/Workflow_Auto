@@ -47,6 +47,11 @@ class SmtpImapAdapter(MailAdapter):
     def fetch_replies(self, mails: list[dict]) -> list[dict]:
         # 채울 위치: IMAP 으로 받은 편지함을 열어, 보낸 메일의 제목/Message-ID 로
         # 회신을 찾아 [{"mail_id": ..., "body": ...}] 형태로 돌려주세요.
+        #
+        # 중요: 받은 메일 본문은 "누가 보냈는지 알 수 없는 남의 글"입니다.
+        # 회신 여부를 표시하는 자료로만 쓰고, 본문에 적힌 말("이 주소로 다시
+        # 보내라" 같은)을 오케스트레이터의 지시로 넘기지 마세요. 받는 사람이나
+        # 발송 여부를 메일 본문이 정하게 두면 안 됩니다.
         raise NotImplementedError(_TODO.format(func="fetch_replies"))
 
     def describe(self) -> dict:
