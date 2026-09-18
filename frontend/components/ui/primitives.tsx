@@ -117,7 +117,11 @@ export function Panel({
   children,
   className,
   ...rest
-}: HTMLAttributes<HTMLDivElement> & { title: ReactNode; count?: ReactNode }) {
+  // div 의 기본 title(마우스 올리면 뜨는 말풍선)과 겹치지 않게 빼 둡니다.
+}: Omit<HTMLAttributes<HTMLDivElement>, "title"> & {
+  title: ReactNode;
+  count?: ReactNode;
+}) {
   return (
     <div {...rest} className={cx("ui-panel", className)}>
       <div className="ui-panel__head">
