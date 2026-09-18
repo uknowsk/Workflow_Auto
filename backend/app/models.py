@@ -281,6 +281,9 @@ class User(Base):
 
     password_hash: Mapped[str] = mapped_column(String(256), default="")
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
+    # 화면 테마. 개인 계정에 저장해서 어느 PC 에서 들어와도 같은 모양으로 보입니다.
+    # 값은 frontend/lib/theme.ts 의 THEMES 와 같아야 합니다.
+    theme: Mapped[str] = mapped_column(String(32), default="white")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     last_login_at: Mapped[datetime | None] = mapped_column(

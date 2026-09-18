@@ -27,7 +27,7 @@ from sqlalchemy.orm import Session
 from app.api.stats import app_ranking
 from app.config import get_settings
 from app.db import get_db
-from app.deps import current_user
+from app.deps import current_user, is_admin, is_admin_token
 from app.mcp_client import client as mcp
 from app.models import App, AppStatus, AppVisibility, Recipe, Run, Schedule, User
 from app.orchestrator import recipe as recipe_engine
@@ -162,7 +162,9 @@ async def _fetch_widget(
 
 @router.get("", summary="첫 화면에 모아 보여줄 것들")
 async def dashboard(
-    db: Session = Depends(get_db), user_id: str = Depends(current_user)
+    db: Session = Depends(get_db),
+    user_id: str = Depends(current_user),
+    token_admin: bool = Depends(is_admin_token),
 ) -> dict:
     # 앱에게 물어보는 칸들은 한꺼번에 물어봅니다(하나씩 기다리면 화면이 늦게 뜹니다).
     # 할 일 앱처럼 담당자를 이름으로 들고 있는 앱이 있어 표시 이름도 함께 넘깁니다.
@@ -229,5 +231,10 @@ async def dashboard(
             }
             for row in recipes
         ],
-        "ranking": app_ranking(db=db, period=None, limit=3)["ranking"],
+        # "이달의 앱"은 앱 순위라서 관리자에게만 보냅니다.
+        "ranking": (
+            app_ranking(db=db, period=None, limit=3)["ranking"]
+            if (token_admin or is_admin(user_id))
+            else []
+        ),
     }

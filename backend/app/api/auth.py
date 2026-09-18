@@ -51,6 +51,18 @@ class MeOut(BaseModel):
     dept: str
     contact: str
     is_admin: bool
+    # 개인 설정. 지금은 화면 테마 하나뿐이고, 앞으로 여기에 늘려 갑니다.
+    theme: str = "white"
+
+
+class SettingsIn(BaseModel):
+    """내 설정 바꾸기. 넣지 않은 값은 그대로 둡니다."""
+
+    theme: str | None = Field(None, description="화면 테마 이름")
+
+
+# 고를 수 있는 테마. frontend/lib/theme.ts 의 THEMES 와 같아야 합니다.
+THEMES = {"white"}
 
 
 @router.post("/login", response_model=LoginOut, summary="로그인")
@@ -80,12 +92,43 @@ def me(db: Session = Depends(get_db), user_id: str = Depends(current_user)) -> M
     if user is None:
         # 개발 모드(토큰 없이 헤더로만 들어온 경우)
         return MeOut(user_id=user_id, name="", dept="", contact="", is_admin=False)
+    return _me(user)
+
+
+@router.put("/me/settings", response_model=MeOut, summary="내 설정 바꾸기")
+def update_settings(
+    payload: SettingsIn,
+    db: Session = Depends(get_db),
+    user_id: str = Depends(current_user),
+) -> MeOut:
+    user = db.query(User).filter(User.user_id == user_id).first()
+    if user is None:
+        # 개발 모드에는 저장할 계정이 없으므로 브라우저에 저장된 값만 씁니다.
+        return MeOut(
+            user_id=user_id,
+            name="",
+            dept="",
+            contact="",
+            is_admin=False,
+            theme=payload.theme or "white",
+        )
+    if payload.theme is not None:
+        if payload.theme not in THEMES:
+            raise HTTPException(400, f"모르는 테마입니다: {payload.theme}")
+        user.theme = payload.theme
+    db.commit()
+    db.refresh(user)
+    return _me(user)
+
+
+def _me(user: User) -> MeOut:
     return MeOut(
         user_id=user.user_id,
         name=user.name,
         dept=user.dept,
         contact=user.contact,
         is_admin=user.is_admin,
+        theme=user.theme or "white",
     )
 
 
@@ -110,10 +153,4 @@ def create_user(
     db.add(user)
     db.commit()
     record(db, admin, "user_created", "user", user.user_id, request=request)
-    return MeOut(
-        user_id=user.user_id,
-        name=user.name,
-        dept=user.dept,
-        contact=user.contact,
-        is_admin=user.is_admin,
-    )
+    return _me(user)

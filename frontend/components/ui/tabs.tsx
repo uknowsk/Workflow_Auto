@@ -6,31 +6,43 @@ import type { ReactNode } from "react";
 import { cx } from "./primitives";
 
 export type NavTabItem = { href: string; label: ReactNode };
+export type NavTabGroup = { label: string; items: NavTabItem[] };
 
+/**
+ * 화면 이동 메뉴. 묶음별로 넘기면 테마가 알아서 가로 탭 줄이나
+ * 세로 메뉴로 그려 줍니다. 묶음 이름은 세로 메뉴 테마에서만 보입니다.
+ */
 export function NavTabs({
-  items,
+  groups,
   current,
 }: {
-  items: NavTabItem[];
+  groups: NavTabGroup[];
   /** 지금 열려 있는 주소. 예) usePathname() 값 */
   current: string;
 }) {
   return (
     <nav className="ui-tabs">
-      {items.map((item) => {
-        const active =
-          item.href === "/" ? current === "/" : current.startsWith(item.href);
-        return (
-          <a
-            key={item.href}
-            href={item.href}
-            className={cx("ui-tab")}
-            aria-current={active ? "page" : undefined}
-          >
-            {item.label}
-          </a>
-        );
-      })}
+      {groups.map((group) => (
+        <div className="ui-tabs__group" key={group.label}>
+          <span className="ui-tabs__label" aria-hidden="true">
+            {group.label}
+          </span>
+          {group.items.map((item) => {
+            const active =
+              item.href === "/" ? current === "/" : current.startsWith(item.href);
+            return (
+              <a
+                key={item.href}
+                href={item.href}
+                className={cx("ui-tab")}
+                aria-current={active ? "page" : undefined}
+              >
+                {item.label}
+              </a>
+            );
+          })}
+        </div>
+      ))}
     </nav>
   );
 }
