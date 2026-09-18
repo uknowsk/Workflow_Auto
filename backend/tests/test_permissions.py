@@ -5,19 +5,11 @@
 
 여기만 조용히 틀리면 일반 사용자에게 남의 앱 사용량이 그대로 보입니다.
 """
-import os
-import tempfile
-
 import pytest
 
-# 앱을 import 하기 전에 환경을 정해 둡니다(파일 하나짜리 sqlite + 관리자 한 명).
-_DB = os.path.join(tempfile.mkdtemp(), "test.db")
-os.environ["DATABASE_URL"] = f"sqlite+pysqlite:///{_DB}"
-os.environ["ADMIN_USER_IDS"] = "E9999"
-os.environ["DEV_HEADER_AUTH"] = "true"
-os.environ["SCHEDULER_ENABLED"] = "false"
-os.environ["HEALTHCHECK_INTERVAL_SECONDS"] = "0"
-os.environ["SEED_FILE"] = ""
+# 환경(파일 하나짜리 sqlite + 관리자 E9999)은 tests/conftest.py 에서 정합니다.
+# 여기서 정하면 늦습니다 — 다른 테스트 파일이 먼저 app 을 import 하면 그쪽 설정이
+# 이미 굳어져, 이 파일만 "no such table" 로 깨집니다.
 
 
 @pytest.fixture(scope="module")
