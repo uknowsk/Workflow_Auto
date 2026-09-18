@@ -34,6 +34,16 @@ const LEAD_CHOICES = [
   { label: "3일 전에", minutes: 4320 },
 ];
 
+// 서버가 주는 영문 상태를 사람 말로 바꿔 줍니다.
+const LAST_STATUS: Record<string, string> = {
+  succeeded: "성공",
+  failed: "실패",
+  running: "처리 중",
+  queued: "대기 중",
+  rejected: "취소됨",
+  awaiting_approval: "확인 필요",
+};
+
 function when(iso: string | null) {
   if (!iso) return "-";
   return new Date(iso).toLocaleString("ko-KR", {
@@ -287,7 +297,11 @@ export default function Schedules() {
                   다음 실행 <When>{when(row.next_run_at)}</When>
                 </Tag>
                 <Tag>지금까지 {row.run_count}번</Tag>
-                {row.last_status && <Tag>최근 {row.last_status}</Tag>}
+                {row.last_status && (
+                  <Badge tone={row.last_status === "failed" ? "crit" : "neutral"}>
+                    최근 {LAST_STATUS[row.last_status] || row.last_status}
+                  </Badge>
+                )}
               </Row>
               {row.last_error && (
                 <Alert tone="crit" style={{ marginTop: "var(--space-2)" }}>
