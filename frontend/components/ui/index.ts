@@ -3,3 +3,5 @@
 export * from "./primitives";
 export * from "./tabs";
 export * from "./topbar";
+export * from "./theme-picker";
+export * from "./modal";

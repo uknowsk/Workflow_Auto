@@ -6,18 +6,16 @@ import {
   Alert,
   Badge,
   Button,
-  Card,
   Checkbox,
   Chip,
   Empty,
   Field,
   IconTile,
   Input,
+  Modal,
   Muted,
   PageTitle,
   Row,
-  Section,
-  SectionHead,
   Tag,
   type Tone,
 } from "@/components/ui";
@@ -69,6 +67,9 @@ export default function Store() {
   const [failed, setFailed] = useState(false);
   const [filter, setFilter] = useState<Filter>("all");
   const [query, setQuery] = useState("");
+  // 등록은 자주 하는 일이 아니라서, 평소에는 목록만 보이고
+  // "＋ 앱 등록"을 눌렀을 때만 이 상자가 열립니다.
+  const [registerOpen, setRegisterOpen] = useState(false);
 
   const reload = () =>
     api
@@ -106,6 +107,7 @@ export default function Store() {
           : `등록은 됐지만 앱에 접속하지 못했습니다: ${created.last_error}`
       );
       setForm({ ...EMPTY });
+      if (created.status === "active") setRegisterOpen(false);
       reload();
     } catch (e) {
       setFailed(true);
@@ -125,10 +127,21 @@ export default function Store() {
 
   return (
     <>
-      <PageTitle
-        title="앱스토어"
-        sub={`등록된 앱 ${apps.length}개 · 필요한 앱을 찾아 내 에이전트에 담아 두세요`}
-      />
+      {/* 목록이 기본 화면이고, 등록은 이 버튼을 눌렀을 때만 열립니다. */}
+      <Row between nowrap style={{ alignItems: "flex-end" }}>
+        <div style={{ minWidth: 0 }}>
+          <PageTitle
+            title="앱스토어"
+            sub={`등록된 앱 ${apps.length}개 · 필요한 앱을 찾아 내 에이전트에 담아 두세요`}
+          />
+        </div>
+        <Button
+          onClick={() => setRegisterOpen(true)}
+          style={{ marginBottom: "var(--space-6)" }}
+        >
+          ＋ 앱 등록
+        </Button>
+      </Row>
 
       <Row style={{ marginBottom: "var(--space-3)" }}>
         <Input
@@ -146,7 +159,9 @@ export default function Store() {
       </Row>
 
       {shown.length === 0 ? (
-        <Empty>조건에 맞는 앱이 없습니다. 아래에서 내 앱을 등록할 수 있어요.</Empty>
+        <Empty>
+          조건에 맞는 앱이 없습니다. 위의 «＋ 앱 등록»으로 내 앱을 올릴 수 있어요.
+        </Empty>
       ) : (
         <div>
           {shown.map((app) => (
@@ -197,9 +212,28 @@ export default function Store() {
         </div>
       )}
 
-      <Section>
-        <SectionHead label="내 앱 등록하기" />
-        <Card className="ui-card--pad-lg">
+      <Modal
+        open={registerOpen}
+        onClose={() => setRegisterOpen(false)}
+        title="내 앱 등록하기"
+        sub="처음에는 나만 쓰는 상태로 저장됩니다. 나중에 «공식 등록 신청»을 누르면 관리자 승인으로 넘어갑니다."
+        footer={
+          <>
+            <Button onClick={register} disabled={!form.slug || !form.name}>
+              등록하기
+            </Button>
+            <Button variant="ghost" onClick={() => setRegisterOpen(false)}>
+              취소
+            </Button>
+            {message && (
+              <Alert tone={failed ? "crit" : "ok"} style={{ flex: 1, minWidth: 240 }}>
+                {message}
+              </Alert>
+            )}
+          </>
+        }
+      >
+        <div>
           <Muted style={{ marginBottom: "var(--space-4)" }}>
             내 앱을 고칠 필요는 없습니다. <code>templates/</code> 의 어댑터를 복사해
             실행한 뒤, 그 주소(<code>.../mcp</code>)를 여기에 넣으면 됩니다. 방법은{" "}
@@ -226,17 +260,8 @@ export default function Store() {
             label="메일 발송·결재 상신처럼 되돌릴 수 없는 일을 합니다 (실행 전 확인을 받습니다)"
           />
 
-          <Button onClick={register} disabled={!form.slug || !form.name}>
-            등록 (처음에는 개인용으로 저장됩니다)
-          </Button>
-
-          {message && (
-            <Alert tone={failed ? "crit" : "ok"} style={{ marginTop: "var(--space-3)" }}>
-              {message}
-            </Alert>
-          )}
-        </Card>
-      </Section>
+        </div>
+      </Modal>
     </>
   );
 }
