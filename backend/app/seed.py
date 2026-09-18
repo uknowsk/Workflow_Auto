@@ -23,6 +23,8 @@ _ALLOWED = {
     "slug", "name", "endpoint", "description", "usage_hint",
     "category", "capability_tag", "owner", "owner_dept", "owner_contact",
     "icon", "auth_headers",
+    # 메일 발송처럼 되돌릴 수 없는 일을 하는 앱은 실행 전 확인을 받습니다.
+    "requires_confirmation",
 }
 
 

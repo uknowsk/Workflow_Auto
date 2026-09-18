@@ -1,0 +1,12 @@
+{
+  "name": "회의록 정리",
+  "description": "회의 메모나 녹취 텍스트를 요약하고 담당자와 기한이 붙은 할 일을 뽑아 줍니다.",
+  "usage_hint": "회의록을 정리하거나 회의 내용에서 할 일을 뽑아낼 때 사용",
+  "category": "문서",
+  "capability_tag": "회의록정리",
+  "icon": "📝",
+  "version": "1.0.0",
+  "runtime": "server",
+  "requires_confirmation": false,
+  "entrypoint": "server.py"
+}

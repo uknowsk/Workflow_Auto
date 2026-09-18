@@ -20,6 +20,8 @@ export default function Nav() {
       <a href="/recipes">레시피</a>
       <a href="/schedules">예약</a>
       <a href="/store">앱스토어</a>
+      <a href="/tasks">할 일</a>
+      <a href="/mail">메일함</a>
       <a href="/forms">양식</a>
       <a href="/stats">이달의 앱</a>
       {session?.is_admin && <a href="/admin">관리자</a>}
