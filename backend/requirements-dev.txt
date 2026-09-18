@@ -1,0 +1,5 @@
+# 테스트용. 서버 이미지에는 들어가지 않습니다.
+#   pip install -r requirements.txt -r requirements-dev.txt
+#   pytest
+-r requirements.txt
+pytest==8.3.4
