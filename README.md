@@ -79,6 +79,22 @@ Gauss 가 OpenAI 호환 형식이라 이것만으로 끝납니다.
 (`backend/app/auth/backend.py` 의 `SsoBackend`). 그 파일 하나만 채우고
 `.env` 의 `AUTH_BACKEND=sso` 로 바꾸면 나머지 코드는 손댈 필요가 없습니다.
 
+### 관리자 계정
+
+관리자 계정은 `.env` 의 `ADMIN_ID` / `ADMIN_PASSWORD` 로 정해지고, 서버가 처음 뜰 때
+그 값으로 만들어집니다. 코드나 저장소 파일에는 비밀번호가 들어가지 않습니다.
+
+```bash
+ADMIN_ID=admin
+ADMIN_PASSWORD=여기에_비밀번호      # 이 줄은 .env 에만, 저장소에는 올리지 마세요
+```
+
+계정이 이미 있으면 비밀번호는 건드리지 않습니다(화면에서 바꿔 뒀을 수 있으니까요).
+비밀번호를 잊었을 때만 `ADMIN_RESET_PASSWORD=true` 로 한 번 띄운 뒤 다시 `false` 로 돌리세요.
+
+사내 SSO 를 붙인 뒤에는 `ADMIN_SSO_IDS` 에 적은 아이디(쉼표 구분, 예: `sk1980.kim`)로
+로그인하면 자동으로 관리자가 됩니다.
+
 ## 기본으로 들어 있는 공식 앱 10개
 
 플랫폼만 있으면 할 수 있는 일이 없으니, 바로 쓸 수 있는 앱 10개를 같이 올려 두었습니다.
@@ -312,7 +328,7 @@ GitHub·ZIP 으로 올릴 때는 패키지 안에 `workflow_app.json` 을 넣어
 | 요청 실행이 계속 실패한다 | `.env` 의 `LLM_*` 값. `/health` 에 현재 설정이 보입니다 |
 | 등록한 앱이 `unreachable` 이다 | 어댑터가 켜져 있는지, 주소가 `/mcp` 로 끝나는지 |
 | 폐쇄망이라 설치가 안 된다 | `.env` 에 `PIP_INDEX_URL`, `NPM_REGISTRY` 를 넣으세요 |
-| 로그인이 안 된다 | `.env` 의 `BOOTSTRAP_ADMIN_ID` / `BOOTSTRAP_ADMIN_PASSWORD` 확인 |
+| 로그인이 안 된다 | `.env` 의 `ADMIN_ID` / `ADMIN_PASSWORD` 확인 |
 | 요청이 "확인 필요"에서 멈춰 있다 | 정상입니다. 계획을 보고 "이대로 진행"을 누르세요 |
 | 예약을 저장하려는데 막힌다 | 되돌릴 수 없는 앱이 낀 예약입니다. 자동 실행 체크를 켜세요 |
 | 예약 시각이 한 시간씩 어긋난다 | `.env` 의 `SCHEDULER_TZ_OFFSET_MINUTES` (한국은 540) |

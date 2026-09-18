@@ -1,11 +1,15 @@
 """환경변수 한 곳에서 읽기. .env 파일이나 컨테이너 환경변수로 주입됩니다."""
 from functools import lru_cache
 
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    # populate_by_name: ADMIN_ID 처럼 별명을 붙인 값도 필드 이름으로 넣을 수 있게 합니다(테스트용).
+    model_config = SettingsConfigDict(
+        env_file=".env", extra="ignore", populate_by_name=True
+    )
 
     # 저장소
     database_url: str = "postgresql+psycopg://workflow:workflow@localhost:5432/workflow"
@@ -30,9 +34,18 @@ class Settings(BaseSettings):
     # 개발 편의: X-User-Id 헤더만으로 로그인한 척할 수 있게 합니다.
     # 회사 배포에서는 반드시 false 로 두세요.
     dev_header_auth: bool = True
-    # 서버가 처음 뜰 때 만들 최초 관리자 계정(이미 있으면 건너뜁니다)
-    bootstrap_admin_id: str = ""
-    bootstrap_admin_password: str = ""
+    # 서버가 처음 뜰 때 만들 관리자 계정. .env 의 ADMIN_ID / ADMIN_PASSWORD 로 정합니다.
+    # (예전 이름 BOOTSTRAP_ADMIN_ID / BOOTSTRAP_ADMIN_PASSWORD 도 그대로 읽힙니다)
+    admin_id: str = Field(
+        "", validation_alias=AliasChoices("ADMIN_ID", "BOOTSTRAP_ADMIN_ID")
+    )
+    admin_password: str = Field(
+        "", validation_alias=AliasChoices("ADMIN_PASSWORD", "BOOTSTRAP_ADMIN_PASSWORD")
+    )
+    admin_name: str = "관리자"
+    # 계정이 이미 있으면 비밀번호를 건드리지 않습니다. true 로 두면 기동할 때마다
+    # .env 의 비밀번호로 덮어씁니다(비밀번호를 잊었을 때만 잠깐 켜세요).
+    admin_reset_password: bool = False
 
     # --- 파일 보관 위치 (앱 패키지, 양식) ---
     data_dir: str = "/srv/data"
@@ -64,12 +77,21 @@ class Settings(BaseSettings):
     # 예) ADMIN_USER_IDS=E1001,E2001
     admin_user_ids: str = ""
 
+    # 사내 SSO 로 들어왔을 때 관리자로 볼 아이디 목록(쉼표 구분).
+    # 예) ADMIN_SSO_IDS=sk1980.kim
+    admin_sso_ids: str = ""
+
     # 개발 편의: 서버 시작 시 테이블 자동 생성
     auto_create_tables: bool = True
 
     @property
     def admins(self) -> set[str]:
         return {x.strip() for x in self.admin_user_ids.split(",") if x.strip()}
+
+    @property
+    def admin_sso(self) -> set[str]:
+        """SSO 아이디는 대소문자를 가리지 않습니다(SK1980.Kim 도 같은 사람)."""
+        return {x.strip().lower() for x in self.admin_sso_ids.split(",") if x.strip()}
 
 
 @lru_cache
