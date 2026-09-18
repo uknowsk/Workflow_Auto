@@ -1,7 +1,26 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { api, App, Card, Form, Run, getSession } from "@/lib/api";
+import { api, App, Card as CardType, Form, Run, getSession } from "@/lib/api";
+import {
+  Alert,
+  Badge,
+  Button,
+  Card,
+  Empty,
+  Field,
+  Grid,
+  IconTile,
+  Muted,
+  PageTitle,
+  Pre,
+  Row,
+  Section,
+  SectionHead,
+  Select,
+  Textarea,
+  type Tone,
+} from "@/components/ui";
 
 const STATUS_LABEL: Record<Run["status"], string> = {
   queued: "대기 중",
@@ -13,8 +32,18 @@ const STATUS_LABEL: Record<Run["status"], string> = {
   rejected: "취소함",
 };
 
+const STATUS_TONE: Record<Run["status"], Tone> = {
+  queued: "neutral",
+  planning: "accent",
+  awaiting_approval: "warn",
+  running: "accent",
+  succeeded: "ok",
+  failed: "crit",
+  rejected: "neutral",
+};
+
 export default function Home() {
-  const [cards, setCards] = useState<Card[]>([]);
+  const [cards, setCards] = useState<CardType[]>([]);
   const [apps, setApps] = useState<App[]>([]);
   const [forms, setForms] = useState<Form[]>([]);
   const [text, setText] = useState("");
@@ -80,54 +109,31 @@ export default function Home() {
 
   return (
     <>
-      <h3>자주 쓰는 에이전트</h3>
-      <div className="grid">
-        {cards.map((card) => (
-          <div className="box" key={card.id} style={{ marginBottom: 0 }}>
-            <div className="row" style={{ justifyContent: "space-between" }}>
-              <b>
-                {card.icon} {card.title}
-              </b>
-              <button className="ghost" onClick={() => api.deleteCard(card.id).then(reload)}>
-                삭제
-              </button>
-            </div>
-            <div className="muted">{card.prompt_template || "요청문 없음"}</div>
-            <div style={{ marginTop: 8 }}>
-              <button
-                onClick={() => {
-                  setText(card.prompt_template);
-                  setCardId(card.id);
-                }}
-              >
-                이 카드로 요청
-              </button>
-            </div>
-          </div>
-        ))}
-        <div className="box" style={{ marginBottom: 0 }}>
-          <div className="muted">새 카드를 만들어 자주 쓰는 요청을 저장하세요.</div>
-          <div style={{ marginTop: 8 }}>
-            <button className="ghost" onClick={addCard}>
-              + 카드 추가
-            </button>
-          </div>
-        </div>
-      </div>
+      <PageTitle
+        title="무엇을 맡길까요?"
+        sub={`쓸 수 있는 앱 ${apps.length}개 · 저장한 카드 ${cards.length}개`}
+      />
 
-      <h3 style={{ marginTop: 28 }}>무엇을 도와드릴까요?</h3>
-      <div className="box">
-        <textarea
-          rows={4}
-          value={text}
-          placeholder="예) 사번 E1001의 이번주 주간보고를 작성해줘"
-          onChange={(e) => setText(e.target.value)}
-        />
-        <div className="row" style={{ marginTop: 8 }}>
-          <select
+      <Card quiet className="ui-card--pad-lg">
+        <Field
+          label="편하게 한 문장으로 적어 주세요."
+          htmlFor="ask"
+          hint="누가·무엇을·어떤 형식으로 를 넣으면 더 잘 알아듣습니다"
+        >
+          <Textarea
+            id="ask"
+            rows={4}
+            value={text}
+            placeholder="예) 사번 E1001의 이번주 주간보고를 작성해줘"
+            onChange={(e) => setText(e.target.value)}
+          />
+        </Field>
+        <Row>
+          <Select
             value={formId}
             onChange={(e) => setFormId(e.target.value)}
             style={{ width: 220 }}
+            aria-label="결과를 채울 양식"
           >
             <option value="">양식 없음 (자유 형식)</option>
             {forms.map((form) => (
@@ -135,71 +141,152 @@ export default function Home() {
                 {form.name}
               </option>
             ))}
-          </select>
-          <button onClick={submit} disabled={!text.trim()}>
-            실행
-          </button>
+          </Select>
           {cardId && (
-            <span className="tag">
-              카드로 실행 중 ·{" "}
-              <a onClick={() => setCardId("")} href="#">
+            <Badge tone="accent">
+              카드로 실행 중{" "}
+              <button
+                type="button"
+                onClick={() => setCardId("")}
+                style={{
+                  border: 0,
+                  background: "none",
+                  color: "inherit",
+                  cursor: "pointer",
+                  textDecoration: "underline",
+                  padding: 0,
+                  font: "inherit",
+                }}
+              >
                 해제
-              </a>
-            </span>
+              </button>
+            </Badge>
           )}
-          <span className="muted">사용 가능한 앱 {apps.length}개</span>
-        </div>
-      </div>
+          <span style={{ marginLeft: "auto" }}>
+            <Button onClick={submit} disabled={!text.trim()}>
+              계획 세우기
+            </Button>
+          </span>
+        </Row>
+      </Card>
 
-      {error && <div className="box" style={{ color: "#b91c1c" }}>{error}</div>}
+      {error && (
+        <Alert tone="crit" style={{ marginTop: "var(--space-4)" }}>
+          {error}
+        </Alert>
+      )}
 
       {run && (
-        <div className="box">
-          <div className="row">
-            <b>상태</b>
-            <span className="tag">{STATUS_LABEL[run.status]}</span>
-          </div>
+        <Section>
+          <SectionHead
+            label="실행"
+            action={<Badge tone={STATUS_TONE[run.status]}>{STATUS_LABEL[run.status]}</Badge>}
+          />
+          <Card>
+            {run.status === "awaiting_approval" && (
+              <>
+                <p style={{ marginTop: 0 }}>
+                  되돌릴 수 없는 작업이 들어 있어 확인이 필요합니다. 아래 계획대로
+                  진행할까요?
+                </p>
+                <Muted>{run.plan_summary}</Muted>
+                <ul style={{ paddingLeft: 18 }}>
+                  {run.plan.map((step, i) => (
+                    <li key={i}>
+                      {step.requires_confirmation ? "⚠️ " : ""}
+                      <b>{step.app}</b> · {step.tool}
+                      {step.why && <span className="ui-muted"> — {step.why}</span>}
+                    </li>
+                  ))}
+                </ul>
+                <Row>
+                  <Button onClick={() => api.approveRun(run.id).then(setRun)}>
+                    이대로 진행
+                  </Button>
+                  <Button variant="ghost" onClick={() => api.rejectRun(run.id).then(setRun)}>
+                    취소
+                  </Button>
+                </Row>
+              </>
+            )}
 
-          {run.status === "awaiting_approval" && (
-            <div style={{ marginTop: 10 }}>
-              <p>
-                되돌릴 수 없는 작업이 들어 있어 확인이 필요합니다. 아래 계획대로
-                진행할까요?
-              </p>
-              <p className="muted">{run.plan_summary}</p>
-              <ul>
-                {run.plan.map((step, i) => (
+            {run.steps?.length > 0 && (
+              <ul className="ui-list">
+                {run.steps.map((step, i) => (
                   <li key={i}>
-                    {step.requires_confirmation ? "⚠️ " : ""}
-                    <b>{step.app}</b> · {step.tool}
-                    {step.why && <span className="muted"> — {step.why}</span>}
+                    <span className={step.error ? "ui-dot ui-dot--crit" : "ui-dot ui-dot--ok"} />
+                    <div className="ui-list__main">
+                      <span className="ui-list__title">
+                        {step.app} · {step.tool}
+                      </span>
+                      {step.error && (
+                        <span className="ui-list__meta">{String(step.error)}</span>
+                      )}
+                    </div>
                   </li>
                 ))}
               </ul>
-              <div className="row">
-                <button onClick={() => api.approveRun(run.id).then(setRun)}>
-                  이대로 진행
-                </button>
-                <button className="ghost" onClick={() => api.rejectRun(run.id).then(setRun)}>
-                  취소
-                </button>
-              </div>
-            </div>
-          )}
-
-          {run.steps?.length > 0 && (
-            <ul className="muted">
-              {run.steps.map((step, i) => (
-                <li key={i}>
-                  {step.error ? "⚠️" : "✅"} {step.app} · {step.tool}
-                </li>
-              ))}
-            </ul>
-          )}
-          {run.result_text && <pre>{run.result_text}</pre>}
-          {run.error && <pre style={{ color: "#b91c1c" }}>{run.error}</pre>}
-        </div>
+            )}
+            {run.result_text && <Pre>{run.result_text}</Pre>}
+            {run.error && (
+              <Alert tone="crit" style={{ marginTop: "var(--space-3)" }}>
+                {run.error}
+              </Alert>
+            )}
+          </Card>
+        </Section>
       )}
+
+      <Section>
+        <SectionHead
+          label="내 에이전트 카드"
+          action={
+            <button type="button" className="ui-chip" onClick={addCard}>
+              + 카드 추가
+            </button>
+          }
+        />
+        {cards.length === 0 ? (
+          <Empty>
+            자주 쓰는 요청을 카드로 저장해 두면 한 번에 불러옵니다. 오른쪽 위
+            &ldquo;카드 추가&rdquo;를 눌러 보세요.
+          </Empty>
+        ) : (
+          <Grid>
+            {cards.map((card) => (
+              <Card key={card.id} hoverable>
+                <Row between>
+                  <Row>
+                    <IconTile>{card.icon || "⭐"}</IconTile>
+                    <b>{card.title}</b>
+                  </Row>
+                  <Button
+                    variant="ghost"
+                    small
+                    onClick={() => api.deleteCard(card.id).then(reload)}
+                  >
+                    삭제
+                  </Button>
+                </Row>
+                <Muted style={{ margin: "var(--space-2) 0 var(--space-3)" }}>
+                  {card.prompt_template || "요청문 없음"}
+                </Muted>
+                <Button
+                  variant="ghost"
+                  small
+                  onClick={() => {
+                    setText(card.prompt_template);
+                    setCardId(card.id);
+                    window.scrollTo({ top: 0, behavior: "smooth" });
+                  }}
+                >
+                  이 카드로 요청
+                </Button>
+              </Card>
+            ))}
+          </Grid>
+        )}
+      </Section>
     </>
   );
 }

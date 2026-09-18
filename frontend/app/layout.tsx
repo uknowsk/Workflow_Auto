@@ -11,10 +11,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="ko">
       <body>
-        <div className="wrap">
-          <Nav />
-          {children}
-        </div>
+        {/* 위 고정 바는 화면 끝까지 닿아야 해서 wrap 바깥에 둡니다. */}
+        <Nav />
+        <div className="ui-wrap">{children}</div>
       </body>
     </html>
   );
