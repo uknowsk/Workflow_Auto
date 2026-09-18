@@ -229,7 +229,8 @@ def reject_app(
     return app
 
 
-@router.delete("/{app_id}", status_code=204, summary="앱 삭제")
+@router.delete("/{app_id}", status_code=204, response_model=None,
+               summary="앱 삭제")
 def delete_app(
     app_id: str, db: Session = Depends(get_db), user_id: str = Depends(current_user)
 ) -> None:

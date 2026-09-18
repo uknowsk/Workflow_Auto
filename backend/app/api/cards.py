@@ -59,7 +59,8 @@ def update_card(
     return card
 
 
-@router.delete("/{card_id}", status_code=204, summary="카드 삭제")
+@router.delete("/{card_id}", status_code=204, response_model=None,
+               summary="카드 삭제")
 def delete_card(
     card_id: str,
     db: Session = Depends(get_db),

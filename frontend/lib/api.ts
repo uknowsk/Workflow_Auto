@@ -89,7 +89,73 @@ export type Card = {
   icon: string;
   prompt_template: string;
   app_ids: string[];
+  recipe_id: string | null;
   pinned: boolean;
+};
+export type RecipeStep = {
+  app_id: string;
+  app_name: string;
+  tool: string;
+  arguments: Record<string, unknown>;
+  title: string;
+};
+export type Recipe = {
+  id: string;
+  title: string;
+  description: string;
+  icon: string;
+  steps: RecipeStep[];
+  final_instruction: string;
+  run_count: number;
+  last_run_at: string | null;
+  // 실행할 때 채워 넣어야 하는 값들. 서버가 {{변수}} 를 읽어 알려 줍니다.
+  variables: string[];
+};
+export type Schedule = {
+  id: string;
+  title: string;
+  description: string;
+  enabled: boolean;
+  trigger: "once" | "daily" | "interval";
+  run_at: string | null;
+  at_time: string;
+  weekdays: number[];
+  interval_minutes: number;
+  lead_minutes: number;
+  action: "request" | "recipe" | "tool";
+  request_text: string;
+  recipe_id: string | null;
+  variables: Record<string, string>;
+  pre_approved: boolean;
+  next_run_at: string | null;
+  last_run_id: string;
+  last_status: string;
+  last_error: string;
+  run_count: number;
+  when_text: string;
+};
+export type DashboardWidget = {
+  key: string;
+  title: string;
+  icon: string;
+  status: "ok" | "empty" | "missing" | "error";
+  app: string;
+  text: string;
+  hint: string;
+};
+export type Dashboard = {
+  user_id: string;
+  widgets: DashboardWidget[];
+  schedules: {
+    id: string;
+    title: string;
+    when_text: string;
+    next_run_at: string;
+    last_status: string;
+  }[];
+  runs: { id: string; request_text: string; status: string; created_at: string }[];
+  recipes: { id: string; title: string; icon: string; run_count: number }[];
+  ranking: { rank: number; name: string; success_calls: number }[];
 };
 export type PlanStep = {
   app: string;
@@ -187,6 +253,38 @@ export const api = {
   getRun: (id: string) => request<Run>(`/api/runs/${id}`),
   approveRun: (id: string) => request<Run>(`/api/runs/${id}/approve`, { method: "POST" }),
   rejectRun: (id: string) => request<Run>(`/api/runs/${id}/reject`, { method: "POST" }),
+
+  listRecipes: () => request<Recipe[]>("/api/recipes"),
+  createRecipeFromRun: (body: Record<string, unknown>) =>
+    request<Recipe>("/api/recipes/from-run", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  deleteRecipe: (id: string) =>
+    request<void>(`/api/recipes/${id}`, { method: "DELETE" }),
+  runRecipe: (id: string, variables: Record<string, string>) =>
+    request<Run>(`/api/recipes/${id}/run`, {
+      method: "POST",
+      body: JSON.stringify({ variables }),
+    }),
+
+  listSchedules: (includeDone = false) =>
+    request<Schedule[]>(`/api/schedules?include_done=${includeDone}`),
+  createSchedule: (body: Record<string, unknown>) =>
+    request<Schedule>("/api/schedules", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  cancelSchedule: (id: string) =>
+    request<Schedule>(`/api/schedules/${id}/cancel`, { method: "POST" }),
+  resumeSchedule: (id: string) =>
+    request<Schedule>(`/api/schedules/${id}/resume`, { method: "POST" }),
+  runScheduleNow: (id: string) =>
+    request<Schedule>(`/api/schedules/${id}/run-now`, { method: "POST" }),
+  deleteSchedule: (id: string) =>
+    request<void>(`/api/schedules/${id}`, { method: "DELETE" }),
+
+  dashboard: () => request<Dashboard>("/api/dashboard"),
 
   appRanking: () => request<Ranking>("/api/stats/apps"),
   usage: () => request<Usage>("/api/stats/usage"),

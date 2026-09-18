@@ -10,6 +10,8 @@
   Launcher    : 개인 PC에 설치해 서버 요청을 대신 실행하는 작은 연결 프로그램
   AuditLog    : 누가 언제 무엇을 했는지 남기는 감사 기록
   LlmUsage    : Gauss 토큰 사용량
+  Recipe      : 한 번 잘 돌아간 앱 호출 흐름에 이름을 붙여 저장한 것(워크플로우)
+  Schedule    : 시간이 되면 스스로 실행되는 예약
 """
 from __future__ import annotations
 
@@ -183,6 +185,8 @@ class AgentCard(Base):
     prompt_template: Mapped[str] = mapped_column(Text, default="")
     # 이 카드가 쓸 앱 목록(App.id). 비어 있으면 등록된 전체 앱을 후보로 씁니다.
     app_ids: Mapped[list] = mapped_column(JSON, default=list)
+    # 레시피 카드. 값이 있으면 이 카드는 요청문 대신 저장된 레시피를 재실행합니다.
+    recipe_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     position: Mapped[int] = mapped_column(Integer, default=0)  # 카드 정렬 순서
     pinned: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
@@ -199,6 +203,12 @@ class Run(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     user_id: Mapped[str] = mapped_column(String(128), index=True)
     card_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    # 레시피로 실행했으면 그 레시피 id. 자연어 요청이면 비어 있습니다.
+    recipe_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    # 예약이 스스로 실행한 것이면 그 예약 id. 사람이 눌렀으면 비어 있습니다.
+    schedule_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    # 레시피 실행에 넣은 값들. 예) {"회의록": "..."} (확인 대기 중에도 남아 있어야 합니다)
+    variables: Mapped[dict] = mapped_column(JSON, default=dict)
     request_text: Mapped[str] = mapped_column(Text)
     # 이 요청에서 후보로 쓸 앱 목록(App.id). 비어 있으면 등록된 전체 앱.
     app_ids: Mapped[list] = mapped_column(JSON, default=list)
@@ -404,3 +414,120 @@ class Notification(Base):
     target_id: Mapped[str] = mapped_column(String(64), default="")
     read: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class Recipe(Base):
+    """워크플로우 레시피 - 한 번 잘 돌아간 앱 호출 흐름에 이름을 붙여 저장한 것.
+
+    카드가 앱 하나라면, 레시피는 '앱 여러 개를 엮은 카드'입니다.
+    예) 회의록 정리 -> 할 일 추출 -> 담당자에게 메일
+
+    steps 한 칸의 모양
+      {"app_id": "...", "app_slug": "...", "app_name": "회의록 정리",
+       "tool": "summarize", "arguments": {...}, "title": "회의록 요약"}
+
+    arguments 안에는 {{변수}} 를 넣을 수 있습니다.
+      {{회의록}}  실행할 때 사용자가 채워 넣는 값
+      {{step1}}   1번째 단계가 돌려준 결과
+      {{today}}   오늘 날짜(YYYY-MM-DD)
+    """
+
+    __tablename__ = "recipes"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(String(128), index=True)
+    title: Mapped[str] = mapped_column(String(128))
+    description: Mapped[str] = mapped_column(Text, default="")
+    icon: Mapped[str] = mapped_column(String(16), default="🧾")
+
+    steps: Mapped[list] = mapped_column(JSON, default=list)
+    # 단계 결과를 모아 최종 결과물을 쓰게 하는 지시문.
+    # 비우면 단계 결과를 그대로 이어 붙입니다(LLM 을 부르지 않아 빠릅니다).
+    final_instruction: Mapped[str] = mapped_column(Text, default="")
+    # 결과를 채워 넣을 양식(FormTemplate.id). 비우면 자유 형식.
+    form_id: Mapped[str] = mapped_column(String(36), default="")
+    # 어떤 실행 기록에서 뽑아 왔는지 (되짚어 볼 때 씁니다)
+    source_run_id: Mapped[str] = mapped_column(String(36), default="")
+
+    run_count: Mapped[int] = mapped_column(Integer, default=0)
+    last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_now, onupdate=_now
+    )
+
+
+class ScheduleTrigger(str, enum.Enum):
+    """언제 돌릴지."""
+
+    once = "once"          # 지정한 시각에 딱 한 번 (예: 회신기한 하루 전)
+    daily = "daily"        # 매일(또는 지정한 요일) 정해진 시각에
+    interval = "interval"  # N분마다 반복
+
+
+class ScheduleAction(str, enum.Enum):
+    """무엇을 돌릴지."""
+
+    request = "request"  # 자연어 요청을 오케스트레이터에 맡김
+    recipe = "recipe"    # 저장해 둔 레시피를 그대로 재실행
+    tool = "tool"        # 특정 앱의 기능 하나만 바로 호출
+
+
+class Schedule(Base):
+    """예약 - 시간이 되면 스스로 움직이는 부분.
+
+    회신기한 리마인드나 수명업무 기한 알림이 전부 이 위에서 돕니다.
+    "기한 하루 전"은 run_at 에 기한을, lead_minutes 에 1440(=24시간)을 넣으면 됩니다.
+    """
+
+    __tablename__ = "schedules"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(String(128), index=True)
+    title: Mapped[str] = mapped_column(String(128))
+    description: Mapped[str] = mapped_column(Text, default="")
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+
+    # ── 언제 ───────────────────────────────────────────────────────
+    trigger: Mapped[ScheduleTrigger] = mapped_column(
+        Enum(ScheduleTrigger, native_enum=False), default=ScheduleTrigger.once
+    )
+    run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    at_time: Mapped[str] = mapped_column(String(5), default="")  # daily 용. "09:00"
+    # daily 에서 특정 요일만 돌리고 싶을 때. 0=월 ... 6=일. 비우면 매일.
+    weekdays: Mapped[list] = mapped_column(JSON, default=list)
+    interval_minutes: Mapped[int] = mapped_column(Integer, default=0)
+    # run_at 보다 이만큼 '미리' 실행합니다. 1440 이면 기한 하루 전.
+    lead_minutes: Mapped[int] = mapped_column(Integer, default=0)
+
+    # ── 무엇을 ─────────────────────────────────────────────────────
+    action: Mapped[ScheduleAction] = mapped_column(
+        Enum(ScheduleAction, native_enum=False), default=ScheduleAction.request
+    )
+    request_text: Mapped[str] = mapped_column(Text, default="")   # action=request
+    app_ids: Mapped[list] = mapped_column(JSON, default=list)     # action=request
+    recipe_id: Mapped[str | None] = mapped_column(String(36), nullable=True)  # action=recipe
+    variables: Mapped[dict] = mapped_column(JSON, default=dict)   # action=recipe
+    app_id: Mapped[str] = mapped_column(String(36), default="")   # action=tool
+    tool_name: Mapped[str] = mapped_column(String(128), default="")  # action=tool
+    arguments: Mapped[dict] = mapped_column(JSON, default=dict)   # action=tool
+
+    # 되돌릴 수 없는 앱(메일 발송 등)이 껴 있는 예약은, 만들 때 한 번 확인을 받습니다.
+    # 예약이 실행될 때는 사람이 화면 앞에 없으므로 그때 물어볼 수가 없기 때문입니다.
+    pre_approved: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    # ── 예약 상태 (화면에 보여주는 값) ─────────────────────────────
+    job_id: Mapped[str] = mapped_column(String(64), default="")  # Redis 큐의 예약 번호
+    next_run_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
+    last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_run_id: Mapped[str] = mapped_column(String(36), default="")
+    last_status: Mapped[str] = mapped_column(String(24), default="")
+    last_error: Mapped[str] = mapped_column(Text, default="")
+    run_count: Mapped[int] = mapped_column(Integer, default=0)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_now, onupdate=_now
+    )

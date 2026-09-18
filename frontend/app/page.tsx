@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { api, App, Card, Form, Run, getSession } from "@/lib/api";
+import { api, App, Card, Form, Recipe, Run, getSession } from "@/lib/api";
 
 const STATUS_LABEL: Record<Run["status"], string> = {
   queued: "대기 중",
@@ -21,12 +21,14 @@ export default function Home() {
   const [cardId, setCardId] = useState("");
   const [formId, setFormId] = useState("");
   const [run, setRun] = useState<Run | null>(null);
+  const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [error, setError] = useState("");
 
   const reload = () => {
     api.listCards().then(setCards).catch(() => undefined);
     api.listApps().then(setApps).catch(() => undefined);
     api.listForms().then(setForms).catch(() => undefined);
+    api.listRecipes().then(setRecipes).catch(() => undefined);
   };
 
   useEffect(() => {
@@ -61,6 +63,22 @@ export default function Home() {
       );
     } catch (e) {
       setError(String(e instanceof Error ? e.message : e));
+    }
+  };
+
+  // 한 번 잘 돌아간 흐름을 레시피로 굳혀 둡니다. 다음부터는 버튼 하나로 끝납니다.
+  const saveAsRecipe = async () => {
+    if (!run) return;
+    const title = prompt(
+      "이 흐름에 이름을 붙여 주세요. 예) 회의록 정리 후 담당자 메일"
+    );
+    if (!title) return;
+    try {
+      await api.createRecipeFromRun({ run_id: run.id, title });
+      reload();
+      alert("레시피로 저장했습니다. '레시피' 화면에서 언제든 다시 실행할 수 있어요.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
     }
   };
 
@@ -101,6 +119,24 @@ export default function Home() {
                 }}
               >
                 이 카드로 요청
+              </button>
+            </div>
+          </div>
+        ))}
+        {recipes.slice(0, 4).map((recipe) => (
+          <div className="box" key={recipe.id} style={{ marginBottom: 0 }}>
+            <div className="row" style={{ justifyContent: "space-between" }}>
+              <b>
+                {recipe.icon} {recipe.title}
+              </b>
+              <span className="tag">레시피 {recipe.steps.length}단계</span>
+            </div>
+            <div className="muted">
+              {recipe.description || "저장해 둔 앱 호출 흐름입니다."}
+            </div>
+            <div style={{ marginTop: 8 }}>
+              <button className="ghost" onClick={() => (location.href = "/recipes")}>
+                레시피 실행
               </button>
             </div>
           </div>
@@ -198,6 +234,17 @@ export default function Home() {
           )}
           {run.result_text && <pre>{run.result_text}</pre>}
           {run.error && <pre style={{ color: "#b91c1c" }}>{run.error}</pre>}
+
+          {run.status === "succeeded" && (
+            <div className="row">
+              <button className="ghost" onClick={saveAsRecipe}>
+                이 흐름을 레시피로 저장
+              </button>
+              <span className="muted">
+                다음부터 같은 일을 버튼 하나로 하고, 예약도 걸 수 있습니다.
+              </span>
+            </div>
+          )}
         </div>
       )}
     </>

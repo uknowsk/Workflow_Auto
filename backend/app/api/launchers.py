@@ -118,7 +118,7 @@ def poll_jobs(
     ]
 
 
-@router.post("/{launcher_id}/jobs/{job_id}/result", status_code=204,
+@router.post("/{launcher_id}/jobs/{job_id}/result", status_code=204, response_model=None,
              summary="실행 결과 보내기 (Launcher 가 호출)")
 def submit_result(
     launcher_id: str,

@@ -36,7 +36,8 @@ def list_notifications(
     ]
 
 
-@router.post("/{notification_id}/read", status_code=204, summary="읽음 표시")
+@router.post("/{notification_id}/read", status_code=204, response_model=None,
+             summary="읽음 표시")
 def mark_read(
     notification_id: str,
     db: Session = Depends(get_db),
