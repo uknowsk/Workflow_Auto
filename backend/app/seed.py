@@ -96,29 +96,42 @@ async def _seed_one_file(path: str) -> None:
 
 
 def seed_bootstrap_admin() -> None:
-    """서버가 처음 뜰 때 관리자 계정 하나를 만들어 둡니다.
+    """서버가 뜰 때 .env 의 ADMIN_ID / ADMIN_PASSWORD 로 관리자 계정을 준비합니다.
 
-    계정이 하나도 없으면 아무도 로그인할 수 없으니 최초 1명이 필요합니다.
-    이미 있으면 아무것도 하지 않습니다.
+    - 둘 중 하나라도 비어 있으면 아무것도 하지 않습니다.
+    - 계정이 없으면 관리자로 새로 만듭니다.
+    - 이미 있으면 비밀번호는 건드리지 않습니다(사용자가 바꿔 뒀을 수 있으니까요).
+      비밀번호를 잊었을 때만 ADMIN_RESET_PASSWORD=true 로 한 번 덮어쓰세요.
+
+    비밀번호는 코드나 저장소 파일이 아니라 .env 에만 적습니다.
     """
-    user_id = settings.bootstrap_admin_id
-    password = settings.bootstrap_admin_password
+    user_id = settings.admin_id
+    password = settings.admin_password
     if not user_id or not password:
         return
 
     db = SessionLocal()
     try:
-        if db.query(User).filter(User.user_id == user_id).first():
+        user = db.query(User).filter(User.user_id == user_id).first()
+        if user is not None:
+            if not settings.admin_reset_password:
+                return
+            user.password_hash = hash_password(password)
+            user.is_admin = True
+            user.is_active = True
+            db.commit()
+            logger.info("[seed] 관리자 비밀번호를 .env 값으로 바꿨습니다: %s", user_id)
             return
+
         db.add(
             User(
                 user_id=user_id,
-                name="관리자",
+                name=settings.admin_name or "관리자",
                 is_admin=True,
                 password_hash=hash_password(password),
             )
         )
         db.commit()
-        logger.info("[seed] 최초 관리자 계정을 만들었습니다: %s", user_id)
+        logger.info("[seed] 관리자 계정을 만들었습니다: %s", user_id)
     finally:
         db.close()
