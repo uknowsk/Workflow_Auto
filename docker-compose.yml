@@ -1,0 +1,109 @@
+# 전체 실행:  docker compose up -d --build
+# 사내 폐쇄망이라면 .env 에 PIP_INDEX_URL 을 넣어 사내 PyPI 미러를 쓰세요.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-workflow}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-workflow}
+      POSTGRES_DB: ${POSTGRES_DB:-workflow}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-workflow}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  # 백엔드 API + 오케스트레이터
+  backend:
+    build:
+      context: ./backend
+      args:
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-}
+        PIP_TRUSTED_HOST: ${PIP_TRUSTED_HOST:-}
+    env_file: [.env]
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://workflow:workflow@postgres:5432/workflow}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+    volumes:
+      # 앱 목록 파일을 컨테이너 안에서 읽을 수 있게 붙여 줍니다.
+      - ./config:/srv/config:ro
+    ports: ["8000:8000"]
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+    restart: unless-stopped
+
+  # 오래 걸리는 요청을 백그라운드에서 처리. 바쁘면 이 서비스만 늘리면 됩니다.
+  #   docker compose up -d --scale worker=3
+  worker:
+    build:
+      context: ./backend
+      args:
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-}
+        PIP_TRUSTED_HOST: ${PIP_TRUSTED_HOST:-}
+    command: ["python", "-m", "app.worker.main"]
+    env_file: [.env]
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://workflow:workflow@postgres:5432/workflow}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      AUTO_CREATE_TABLES: "false"
+      SEED_FILE: ""
+    volumes:
+      - ./config:/srv/config:ro
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NPM_REGISTRY: ${NPM_REGISTRY:-}
+    environment:
+      NEXT_PUBLIC_API_BASE: ${NEXT_PUBLIC_API_BASE:-http://localhost:8000}
+    ports: ["3000:3000"]
+    depends_on: [backend]
+    restart: unless-stopped
+
+  # ── 아래 둘은 "예시"입니다. 실제 운영에서는 지우고,
+  #    개발자들이 각자 띄운 어댑터 주소를 앱스토어에 등록하면 됩니다. ──
+
+  # 기존 앱(바이브 코딩으로 만든 웹앱이라고 가정). 한 줄도 고치지 않습니다.
+  example-legacy:
+    build:
+      context: ./example_app/legacy_app
+      args:
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-}
+        PIP_TRUSTED_HOST: ${PIP_TRUSTED_HOST:-}
+    restart: unless-stopped
+
+  # 그 앱 옆에 붙인 얇은 MCP 어댑터. 오케스트레이터는 이 주소로 앱을 부릅니다.
+  example-adapter:
+    build:
+      context: ./example_app/mcp_adapter
+      args:
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-}
+        PIP_TRUSTED_HOST: ${PIP_TRUSTED_HOST:-}
+    environment:
+      APP_BASE_URL: http://example-legacy:8100
+      PORT: "9001"
+    ports: ["9001:9001"]
+    depends_on: [example-legacy]
+    restart: unless-stopped
+
+volumes:
+  pgdata:

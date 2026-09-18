@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+
+# Node
+node_modules/
+.next/
+out/
+npm-debug.log*
+
+# 환경변수 (실제 값은 절대 커밋하지 마세요)
+.env
+.env.local
+
+# 기타
+.DS_Store
+*.log
+
+# 회사 전용 설정 (집 저장소에는 올리지 않습니다)
+config/apps.seed.json
+config/profiles/*.env
+!config/profiles/*.env.example
