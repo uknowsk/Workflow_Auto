@@ -29,7 +29,7 @@ from app.config import get_settings
 from app.db import get_db
 from app.deps import current_user
 from app.mcp_client import client as mcp
-from app.models import App, AppStatus, AppVisibility, Recipe, Run, Schedule
+from app.models import App, AppStatus, AppVisibility, Recipe, Run, Schedule, User
 from app.orchestrator import recipe as recipe_engine
 from app.scheduler import service as scheduler
 
@@ -44,37 +44,37 @@ DEFAULT_WIDGETS: list[dict] = [
         "key": "today_tasks",
         "title": "오늘 마감 할 일",
         "icon": "✅",
-        "capability_tag": "todo",
-        "tool": "list_due_tasks",
-        "arguments": {"user_id": "{{user_id}}", "days": 1},
-        "hint": "할 일 앱(역할 태그 todo)을 앱스토어에 등록하면 여기에 채워집니다.",
+        "capability_tag": "할일관리",
+        "tool": "list_due_soon",
+        "arguments": {"days": 1, "owner": "{{user_name}}"},
+        "hint": "할 일 앱(역할 태그 할일관리)을 앱스토어에 등록하면 여기에 채워집니다.",
     },
     {
         "key": "awaiting_replies",
         "title": "회신 안 온 메일",
         "icon": "📮",
-        "capability_tag": "mail",
-        "tool": "list_awaiting_replies",
-        "arguments": {"user_id": "{{user_id}}"},
-        "hint": "사내 메일 앱(역할 태그 mail)을 등록하면 여기에 채워집니다.",
+        "capability_tag": "사내메일",
+        "tool": "list_unreplied",
+        "arguments": {"overdue_only": True},
+        "hint": "사내 메일 앱(역할 태그 사내메일)을 등록하면 여기에 채워집니다.",
     },
     {
         "key": "assignments",
         "title": "수명업무",
         "icon": "📌",
-        "capability_tag": "assignment",
-        "tool": "list_open_assignments",
-        "arguments": {"user_id": "{{user_id}}"},
-        "hint": "수명업무 앱(역할 태그 assignment)을 등록하면 여기에 채워집니다.",
+        "capability_tag": "할일관리",
+        "tool": "list_tasks",
+        "arguments": {"kind": "order", "status": "open", "owner": "{{user_name}}"},
+        "hint": "할 일 앱(역할 태그 할일관리)을 등록하면 여기에 채워집니다.",
     },
     {
         "key": "deliverables",
-        "title": "다가오는 산출물",
+        "title": "내 프로젝트 · 다음 산출물",
         "icon": "📁",
-        "capability_tag": "project",
-        "tool": "list_due_deliverables",
-        "arguments": {"user_id": "{{user_id}}", "days": 7},
-        "hint": "개발 프로젝트 앱(역할 태그 project)을 등록하면 여기에 채워집니다.",
+        "capability_tag": "개발프로젝트관리",
+        "tool": "list_my_projects",
+        "arguments": {"user_id": "{{user_id}}"},
+        "hint": "개발 프로젝트 앱(역할 태그 개발프로젝트관리)을 등록하면 여기에 채워집니다.",
     },
 ]
 
@@ -113,7 +113,9 @@ def _pick_app(db: Session, capability_tag: str, user_id: str) -> App | None:
     return (mine or candidates)[0]
 
 
-async def _fetch_widget(db: Session, widget: dict, user_id: str) -> dict:
+async def _fetch_widget(
+    db: Session, widget: dict, user_id: str, user_name: str = ""
+) -> dict:
     """칸 하나를 채웁니다. 앱이 없거나 느려도 빈 칸으로 돌려주고 넘어갑니다."""
     result = {
         "key": widget.get("key", ""),
@@ -136,7 +138,8 @@ async def _fetch_widget(db: Session, widget: dict, user_id: str) -> dict:
         return result
 
     arguments = recipe_engine.fill(
-        widget.get("arguments") or {}, recipe_engine.base_context(user_id)
+        widget.get("arguments") or {},
+        recipe_engine.base_context(user_id, user_name),
     )
     result["app"] = app.name
     try:
@@ -162,8 +165,15 @@ async def dashboard(
     db: Session = Depends(get_db), user_id: str = Depends(current_user)
 ) -> dict:
     # 앱에게 물어보는 칸들은 한꺼번에 물어봅니다(하나씩 기다리면 화면이 늦게 뜹니다).
+    # 할 일 앱처럼 담당자를 이름으로 들고 있는 앱이 있어 표시 이름도 함께 넘깁니다.
+    me = db.query(User).filter(User.user_id == user_id).first()
+    user_name = me.name if me and me.name else user_id
+
     widgets = await asyncio.gather(
-        *(_fetch_widget(db, widget, user_id) for widget in load_widgets())
+        *(
+            _fetch_widget(db, widget, user_id, user_name)
+            for widget in load_widgets()
+        )
     )
 
     upcoming = (

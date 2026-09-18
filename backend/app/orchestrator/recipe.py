@@ -10,7 +10,7 @@
 단계 인자 안에는 {{변수}} 를 쓸 수 있습니다.
   {{회의록}}  실행할 때 사용자가 채워 넣는 값
   {{step1}}   1번째 단계가 돌려준 결과 (앞 단계 결과를 다음 단계에 넘길 때)
-  {{today}}   오늘 날짜, {{now}} 지금 시각, {{user_id}} 실행한 사람 사번
+  {{today}}   오늘 날짜, {{now}} 지금 시각, {{user_id}} 실행한 사람 사번, {{user_name}} 이름
 """
 from __future__ import annotations
 
@@ -33,7 +33,7 @@ settings = get_settings()
 _PLACEHOLDER = re.compile(r"\{\{\s*([^{}]+?)\s*\}\}")
 _STEP_REF = re.compile(r"^step([1-9][0-9]*)$")
 # 사용자가 채워 넣을 필요가 없는(시스템이 알아서 넣는) 이름들
-BUILTIN_NAMES = {"today", "now", "user_id"}
+BUILTIN_NAMES = {"today", "now", "user_id", "user_name"}
 
 FINAL_PROMPT = """너는 사내 업무 자동화 도우미다.
 아래는 정해진 순서대로 앱을 호출해 얻은 결과들이다.
@@ -49,12 +49,15 @@ def local_now() -> datetime:
     )
 
 
-def base_context(user_id: str = "") -> dict[str, str]:
+def base_context(user_id: str = "", user_name: str = "") -> dict[str, str]:
     now = local_now()
     return {
         "today": now.strftime("%Y-%m-%d"),
         "now": now.strftime("%Y-%m-%d %H:%M"),
         "user_id": user_id,
+        # 앱에 따라 담당자를 사번이 아니라 이름으로 들고 있습니다(할 일 앱의 owner 등).
+        # 이름을 모르면 사번을 그대로 씁니다.
+        "user_name": user_name or user_id,
     }
 
 
