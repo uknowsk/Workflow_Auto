@@ -38,6 +38,7 @@
 | `backend/app/mcp_client/` | 등록된 앱(MCP 서버)을 부르는 클라이언트 |
 | `backend/app/worker/` | Redis 큐 + 백그라운드 처리 |
 | `frontend/` | Next.js 최소 화면 4개 |
+| `official_apps/` | 기본으로 올라가는 공식 앱 3개 (회의록 정리 / 할 일·수명업무 / 사내 메일) |
 | `templates/` | 개발자가 복사해 쓰는 어댑터 견본 (웹앱용 / PC 설치형용) |
 | `example_app/` | 기존 앱 + 그 옆에 붙인 어댑터 완성 예시 |
 | `config/` | 집/회사 프로필, 사내 앱 목록 |

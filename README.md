@@ -36,6 +36,8 @@ docker compose up -d --build
 | 주소 | 무엇 |
 |---|---|
 | http://localhost:3000 | 화면 |
+| http://localhost:3000/tasks | 할 일 / 수명업무 |
+| http://localhost:3000/mail | 메일함 (보낸 메일·회신 현황) |
 | http://localhost:8000/docs | API 문서 (직접 눌러 볼 수 있습니다) |
 | http://localhost:8000/health | 잘 떴는지 확인 |
 
@@ -135,6 +137,22 @@ GitHub·ZIP 으로 올릴 때는 패키지 안에 `workflow_app.json` 을 넣어
 토큰을 얼마나 썼는지 사용자별·전체로 볼 수 있습니다. 지금은 확인만 하고
 한도로 막지는 않습니다.
 
+## 첫 업무 시나리오
+
+공식 앱 세 개(회의록 정리 · 할 일/수명업무 · 사내 메일)가 기본으로 등록됩니다.
+한 문장으로 요청하면 이렇게 이어집니다.
+
+```
+"이 회의록 정리해서 담당자들에게 할 일 메일 보내줘"
+   → 회의록 요약 + 할 일 추출 → 할 일 등록 → 담당자별 확인 메일
+   → 회신 기한이 지나면 회신 안 한 사람에게만 리마인드
+```
+
+집에서는 메일이 **가짜 메일함**으로 설정되어 실제로 나가지 않습니다. LLM 없이
+흐름만 확인하려면 `python scripts/demo_scenario.py` 를 돌려 보세요.
+자세한 방법은 **[docs/FIRST_SCENARIO.md](docs/FIRST_SCENARIO.md)**,
+앱별 기능은 **[official_apps/README.md](official_apps/README.md)** 에 있습니다.
+
 ## 앱 등급과 승인
 
 | 등급 | 누가 쓰나 |
@@ -171,6 +189,7 @@ GitHub·ZIP 으로 올릴 때는 패키지 안에 `workflow_app.json` 을 넣어
 |---|---|
 | `backend/` | FastAPI. API + 오케스트레이터 + 큐 |
 | `frontend/` | Next.js 화면 4개 |
+| `official_apps/` | 기본으로 올라가는 공식 앱 (회의록·할 일·사내 메일) |
 | `templates/` | 개발자가 복사해 쓰는 어댑터 견본 |
 | `example_app/` | 기존 앱 + 어댑터 완성 예시 |
 | `config/` | 집/회사 프로필, 사내 앱 목록 |
