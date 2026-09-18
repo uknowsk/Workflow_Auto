@@ -14,6 +14,7 @@ const BASE_TABS: NavTabItem[] = [
   { href: "/tasks", label: "할 일" },
   { href: "/mail", label: "메일함" },
   { href: "/forms", label: "양식" },
+  { href: "/tools", label: "도구" },
   { href: "/stats", label: "이달의 앱" },
 ];
 

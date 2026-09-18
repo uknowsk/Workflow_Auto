@@ -292,3 +292,40 @@ class ScheduleOut(BaseModel):
     when_text: str = ""
 
     model_config = ConfigDict(from_attributes=True)
+
+
+# ----------------------------- 도구 서랍 -----------------------------
+class NoteIn(BaseModel):
+    title: str = Field("", max_length=200)
+    body: str = ""
+    pinned: bool = False
+
+
+class NoteOut(NoteIn):
+    id: str
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class DrawingIn(BaseModel):
+    title: str = Field("", max_length=200)
+    image: str = Field(..., description="data:image/png;base64,... 모양의 PNG")
+    width: int = 0
+    height: int = 0
+
+
+class DrawingOut(BaseModel):
+    """목록에서는 그림 자체를 빼고 제목만 보냅니다(목록이 무거워지지 않게)."""
+
+    id: str
+    title: str
+    width: int
+    height: int
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class DrawingFull(DrawingOut):
+    image: str

@@ -21,6 +21,7 @@ from app.api import (
     runs,
     schedules,
     stats,
+    tools,
 )
 from app.config import get_settings
 from app.db import SessionLocal, create_all
@@ -89,4 +90,5 @@ app.include_router(forms.router)
 app.include_router(launchers.router)
 app.include_router(notifications.router)
 app.include_router(stats.router)
+app.include_router(tools.router)
 app.include_router(audit.router)

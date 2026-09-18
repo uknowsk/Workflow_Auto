@@ -531,3 +531,42 @@ class Schedule(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_now, onupdate=_now
     )
+
+
+class ToolNote(Base):
+    """도구 서랍의 간단 메모 한 장. 개인 계정에 저장됩니다."""
+
+    __tablename__ = "tool_notes"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(String(128), index=True)
+    title: Mapped[str] = mapped_column(String(200), default="")
+    body: Mapped[str] = mapped_column(Text, default="")
+    pinned: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_now, onupdate=_now
+    )
+
+
+class Drawing(Base):
+    """그리기 도구로 그린 그림 한 장.
+
+    그림은 PNG 를 data URL 문자열로 통째로 저장합니다. 파일 서버를 따로 두지
+    않아도 되고 폐쇄망에서 백업이 DB 하나로 끝나기 때문입니다. 대신 한 장이
+    커질 수 있어 API 에서 크기를 제한합니다(MAX_DRAWING_BYTES).
+    """
+
+    __tablename__ = "drawings"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(String(128), index=True)
+    title: Mapped[str] = mapped_column(String(200), default="")
+    # data:image/png;base64,... 모양의 문자열
+    image: Mapped[str] = mapped_column(Text, default="")
+    width: Mapped[int] = mapped_column(Integer, default=0)
+    height: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_now, onupdate=_now
+    )
