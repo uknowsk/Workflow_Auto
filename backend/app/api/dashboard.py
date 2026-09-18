@@ -42,11 +42,11 @@ router = APIRouter(prefix="/api/dashboard", tags=["개인 대시보드"])
 DEFAULT_WIDGETS: list[dict] = [
     {
         "key": "today_tasks",
-        "title": "오늘 마감 할 일",
+        "title": "곧 마감인 할 일 (3일 내)",
         "icon": "✅",
         "capability_tag": "할일관리",
         "tool": "list_due_soon",
-        "arguments": {"days": 1, "owner": "{{user_name}}"},
+        "arguments": {"days": 3, "owner": "{{user_name}}"},
         "hint": "할 일 앱(역할 태그 할일관리)을 앱스토어에 등록하면 여기에 채워집니다.",
     },
     {
@@ -55,7 +55,7 @@ DEFAULT_WIDGETS: list[dict] = [
         "icon": "📮",
         "capability_tag": "사내메일",
         "tool": "list_unreplied",
-        "arguments": {"overdue_only": True},
+        "arguments": {"overdue_only": False},
         "hint": "사내 메일 앱(역할 태그 사내메일)을 등록하면 여기에 채워집니다.",
     },
     {
