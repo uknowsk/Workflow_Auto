@@ -64,12 +64,25 @@ def _extract_json(text: str) -> dict | None:
         return None
 
 
+def _usage_of(response) -> dict:
+    """응답에 실려 오는 토큰 사용량. Gauss 가 안 주면 0 으로 둡니다."""
+    usage = getattr(response, "usage", None)
+    if usage is None:
+        return {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+    return {
+        "prompt_tokens": getattr(usage, "prompt_tokens", 0) or 0,
+        "completion_tokens": getattr(usage, "completion_tokens", 0) or 0,
+        "total_tokens": getattr(usage, "total_tokens", 0) or 0,
+    }
+
+
 def chat(messages: list[dict], tools: list[dict] | None = None) -> dict:
     """LLM 한 번 호출.
 
     반환값은 tool_mode 와 무관하게 항상 같은 모양입니다.
-      {"tool_calls": [{"id", "name", "arguments"}], "content": "..."}
+      {"tool_calls": [...], "content": "...", "usage": {...}, "model": "..."}
     tool_calls 가 비어 있으면 content 가 최종 답입니다.
+    usage 는 요금 집계를 위해 호출한 쪽에서 기록합니다.
     """
     client = get_client()
 
@@ -88,7 +101,12 @@ def chat(messages: list[dict], tools: list[dict] | None = None) -> dict:
             except json.JSONDecodeError:
                 arguments = {}
             calls.append({"id": call.id, "name": call.function.name, "arguments": arguments})
-        return {"tool_calls": calls, "content": message.content or ""}
+        return {
+            "tool_calls": calls,
+            "content": message.content or "",
+            "usage": _usage_of(response),
+            "model": settings.llm_model,
+        }
 
     # --- json 모드 (함수 호출 미지원 모델) ---
     prepared = list(messages)
@@ -105,6 +123,7 @@ def chat(messages: list[dict], tools: list[dict] | None = None) -> dict:
     )
     raw = response.choices[0].message.content or ""
     parsed = _extract_json(raw)
+    meta = {"usage": _usage_of(response), "model": settings.llm_model}
 
     if parsed and parsed.get("action") == "call_tool" and parsed.get("tool"):
         return {
@@ -116,11 +135,12 @@ def chat(messages: list[dict], tools: list[dict] | None = None) -> dict:
                 }
             ],
             "content": "",
+            **meta,
         }
     if parsed and parsed.get("action") == "final":
-        return {"tool_calls": [], "content": str(parsed.get("answer", ""))}
+        return {"tool_calls": [], "content": str(parsed.get("answer", "")), **meta}
     # JSON 을 못 알아들으면 그냥 본문을 최종 답으로 취급합니다.
-    return {"tool_calls": [], "content": raw}
+    return {"tool_calls": [], "content": raw, **meta}
 
 
 def tool_result_message(call: dict[str, Any], output: str) -> dict:

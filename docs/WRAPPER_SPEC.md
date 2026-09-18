@@ -78,6 +78,57 @@ def find_employee(employee_id: str) -> dict:
 | `icon` | | 이모지 하나 |
 | `auth_headers` | | 사내 인증이 필요할 때 붙일 헤더 |
 
+## 4-1. 매니페스트 (workflow_app.json)
+
+GitHub 주소나 ZIP 으로 앱을 통째로 올릴 때는, 패키지 안에 이 파일이 있어야 합니다.
+등록 화면에서 일일이 입력하지 않아도 여기 적힌 값으로 자동으로 채워집니다.
+
+```json
+{
+  "name": "사내규정 검색",
+  "description": "사내 규정 문서를 찾아 줍니다",
+  "usage_hint": "규정이나 지침을 물어볼 때 사용",
+  "category": "검색",
+  "capability_tag": "사내규정검색",
+  "icon": "📘",
+  "version": "1.0.0",
+  "runtime": "server",
+  "requires_confirmation": false,
+  "entrypoint": "server.py"
+}
+```
+
+| 항목 | 설명 |
+|---|---|
+| `runtime` | `server` = 중앙 서버에서 구동, `pc` = 개인 PC에서 Launcher 가 구동 |
+| `requires_confirmation` | 메일 발송·결재 상신처럼 되돌릴 수 없는 일을 하면 `true` |
+| `entrypoint` | 어댑터를 실행하는 파일 |
+
+## 4-2. 앱을 올리는 세 가지 방법
+
+| 방법 | 언제 |
+|---|---|
+| 주소만 등록 (`POST /api/apps`) | 어댑터를 내가 직접 켜 두고 주소만 알려줄 때 |
+| GitHub 주소 (`POST /api/apps/from-github`) | 코드가 사내 Git 에 있을 때 |
+| ZIP 업로드 (`POST /api/apps/from-zip`) | 코드를 압축해서 올릴 때 |
+
+## 4-3. 실행 위치: 서버냐 내 PC냐
+
+| | 서버 구동 (`runtime: server`) | 개인 PC 구동 (`runtime: pc`) |
+|---|---|---|
+| 어디서 도나 | 중앙 서버 | 내 PC |
+| 누가 실행하나 | 서버가 직접 | 내 PC의 **Launcher** |
+| 남들도 쓸 수 있나 | 예 | 내 PC가 켜져 있을 때만 |
+| 적합한 앱 | 웹앱, API 형태 | 설치형 프로그램, 내 PC 파일을 다루는 앱 |
+
+서버는 남의 PC 프로그램을 직접 실행할 수 없습니다. 그래서 PC 구동형은
+**Launcher**(개인 PC에 까는 작은 연결 프로그램)가 서버에 "일 있나요?" 하고
+물어보러 와서 대신 실행하고 결과를 돌려주는 방식을 씁니다. PC 에서 밖으로
+나가는 연결만 쓰므로 방화벽을 열 필요가 없습니다.
+
+> 뼈대에는 Launcher 가 쓸 API(`/api/launchers/...`)만 들어 있습니다.
+> Launcher 프로그램 자체는 다음 단계입니다.
+
 ## 5. 앱 등급과 승인
 
 | 등급 | 누가 쓸 수 있나 |
@@ -103,6 +154,17 @@ def find_employee(employee_id: str) -> dict:
 태그가 비어 있거나 서로 다르면 경쟁 관계가 아니므로 전부 후보로 둡니다.
 
 구현: `backend/app/orchestrator/engine.py` 의 `pick_apps()`
+
+## 6-1. 되돌릴 수 없는 앱과 실행 전 확인
+
+`requires_confirmation: true` 인 앱이 계획에 끼면, 오케스트레이터는 바로
+실행하지 않습니다.
+
+1. 먼저 "어떤 앱을 어떤 순서로 쓸지" 계획만 세웁니다
+2. 계획을 사용자에게 보여 주고 멈춥니다 (`awaiting_approval`)
+3. 사용자가 "이대로 진행"을 누르면 그때 실행합니다
+
+메일이 먼저 나가 버리고 나서 "아 잘못 보냈네" 하는 일을 막기 위한 장치입니다.
 
 ## 7. 활용도 집계
 

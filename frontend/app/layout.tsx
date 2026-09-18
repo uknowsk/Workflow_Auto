@@ -1,5 +1,6 @@
 import "./globals.css";
 import type { Metadata } from "next";
+import Nav from "./nav";
 
 export const metadata: Metadata = {
   title: "Workflow Auto",
@@ -11,13 +12,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="ko">
       <body>
         <div className="wrap">
-          <nav>
-            <b>⚙️ Workflow Auto</b>
-            <a href="/">내 에이전트</a>
-            <a href="/store">앱스토어</a>
-            <a href="/stats">이달의 앱</a>
-            <a href="/admin">관리자</a>
-          </nav>
+          <Nav />
           {children}
         </div>
       </body>

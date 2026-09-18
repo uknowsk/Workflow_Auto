@@ -40,6 +40,8 @@ services:
     volumes:
       # 앱 목록 파일을 컨테이너 안에서 읽을 수 있게 붙여 줍니다.
       - ./config:/srv/config:ro
+      # 올린 앱 패키지와 양식 파일이 여기에 쌓입니다.
+      - appdata:/srv/data
     ports: ["8000:8000"]
     depends_on:
       postgres: {condition: service_healthy}
@@ -61,8 +63,11 @@ services:
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       AUTO_CREATE_TABLES: "false"
       SEED_FILE: ""
+      # 생존 확인은 backend 컨테이너에서만 돕니다(중복 방지).
+      HEALTHCHECK_INTERVAL_SECONDS: "0"
     volumes:
       - ./config:/srv/config:ro
+      - appdata:/srv/data
     depends_on:
       postgres: {condition: service_healthy}
       redis: {condition: service_healthy}
@@ -107,3 +112,4 @@ services:
 
 volumes:
   pgdata:
+  appdata:

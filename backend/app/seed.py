@@ -13,7 +13,8 @@ from pathlib import Path
 from app.config import get_settings
 from app.db import SessionLocal
 from app.mcp_client import client as mcp
-from app.models import App, AppStatus, AppTool, AppVisibility
+from app.auth.passwords import hash_password
+from app.models import App, AppStatus, AppTool, AppVisibility, User
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -76,5 +77,34 @@ async def seed_from_file(path: str) -> None:
             await _sync(db, app)
             logger.info("[seed] 등록: %s (%s)", app.name, app.status.value)
         db.commit()
+    finally:
+        db.close()
+
+
+def seed_bootstrap_admin() -> None:
+    """서버가 처음 뜰 때 관리자 계정 하나를 만들어 둡니다.
+
+    계정이 하나도 없으면 아무도 로그인할 수 없으니 최초 1명이 필요합니다.
+    이미 있으면 아무것도 하지 않습니다.
+    """
+    user_id = settings.bootstrap_admin_id
+    password = settings.bootstrap_admin_password
+    if not user_id or not password:
+        return
+
+    db = SessionLocal()
+    try:
+        if db.query(User).filter(User.user_id == user_id).first():
+            return
+        db.add(
+            User(
+                user_id=user_id,
+                name="관리자",
+                is_admin=True,
+                password_hash=hash_password(password),
+            )
+        )
+        db.commit()
+        logger.info("[seed] 최초 관리자 계정을 만들었습니다: %s", user_id)
     finally:
         db.close()

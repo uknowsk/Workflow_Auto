@@ -1,14 +1,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { api, Ranking } from "@/lib/api";
+import { api, Ranking, Usage } from "@/lib/api";
 
 export default function Stats() {
   const [data, setData] = useState<Ranking | null>(null);
+  const [usage, setUsage] = useState<Usage | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
     api.appRanking().then(setData).catch((e) => setError(String(e)));
+    api.usage().then(setUsage).catch(() => undefined);
   }, []);
 
   return (
@@ -18,6 +20,12 @@ export default function Stats() {
         순위는 단순 호출 수가 아니라 <b>성공한 호출 수</b> 기준입니다. 많이 불렸어도
         계속 실패한 앱은 위로 올라오지 않습니다.
       </p>
+      {usage && (
+        <div className="box muted">
+          내 Gauss 사용량 ({usage.period}): {usage.mine.total_tokens.toLocaleString()} 토큰
+          · 호출 {usage.mine.calls}회
+        </div>
+      )}
       {error && <div className="box" style={{ color: "#b91c1c" }}>{error}</div>}
       {data?.ranking.length === 0 && (
         <div className="box muted">이번 달 호출 기록이 아직 없습니다.</div>

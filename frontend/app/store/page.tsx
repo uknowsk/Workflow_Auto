@@ -3,7 +3,11 @@
 import { useEffect, useState } from "react";
 import { api, App } from "@/lib/api";
 
-const EMPTY = {
+type FormState = {
+  [k: string]: string | boolean;
+};
+
+const EMPTY: FormState = {
   slug: "",
   name: "",
   endpoint: "http://localhost:9001/mcp",
@@ -11,6 +15,7 @@ const EMPTY = {
   usage_hint: "",
   category: "etc",
   capability_tag: "",
+  requires_confirmation: false,
   owner: "",
   owner_dept: "",
   owner_contact: "",
@@ -49,13 +54,13 @@ export default function Store() {
     }
   };
 
-  const field = (key: keyof typeof EMPTY, label: string, hint = "") => (
+  const field = (key: string, label: string, hint = "") => (
     <div>
       <label>
         {label} {hint && <span className="muted">· {hint}</span>}
       </label>
       <input
-        value={form[key]}
+        value={String(form[key] ?? "")}
         onChange={(e) => setForm({ ...form, [key]: e.target.value })}
       />
     </div>
@@ -75,6 +80,11 @@ export default function Store() {
             </div>
             <div className="muted">{app.description || app.usage_hint}</div>
             <div className="muted" style={{ marginTop: 6 }}>
+              {app.requires_confirmation && "⚠️ 실행 전 확인 필요 · "}
+              {app.runtime_location === "pc" ? "💻 개인 PC(Launcher)" : "🖥️ 서버"}
+              {app.package_version && ` · v${app.package_version}`}
+            </div>
+            <div className="muted">
               등록자: {app.owner || app.owner_user_id || "-"}
               {app.owner_contact && ` · ${app.owner_contact}`}
             </div>
@@ -115,6 +125,17 @@ export default function Store() {
         {field("owner_dept", "등록자 소속")}
         {field("owner_contact", "연락처", "메일 또는 사내 메신저")}
         {field("icon", "아이콘")}
+        <label>
+          <input
+            type="checkbox"
+            style={{ width: "auto", marginRight: 6 }}
+            checked={Boolean(form.requires_confirmation)}
+            onChange={(e) =>
+              setForm({ ...form, requires_confirmation: e.target.checked })
+            }
+          />
+          메일 발송·결재 상신처럼 되돌릴 수 없는 일을 합니다 (실행 전 확인을 받습니다)
+        </label>
         <div style={{ marginTop: 12 }}>
           <button onClick={register} disabled={!form.slug || !form.name}>
             등록 (처음에는 개인용으로 저장됩니다)

@@ -13,7 +13,8 @@ from sqlalchemy import case, distinct, func
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models import App, AppCallLog
+from app.deps import current_user, is_admin
+from app.models import App, AppCallLog, LlmUsage
 
 router = APIRouter(prefix="/api/stats", tags=["통계"])
 
@@ -102,3 +103,69 @@ def recent_failures(
         }
         for row in rows
     ]
+
+
+@router.get("/usage", summary="Gauss 사용량 확인")
+def llm_usage(
+    db: Session = Depends(get_db),
+    user_id: str = Depends(current_user),
+    period: str | None = Query(default=None, description="집계할 달. YYYY-MM. 비우면 이번 달."),
+) -> dict:
+    """토큰을 얼마나 썼는지 봅니다.
+
+    일반 사용자는 자기 사용량만, 관리자는 전체와 사용자별 순위를 봅니다.
+    (지금은 확인만 하고 한도로 막지는 않습니다.)
+    """
+    target = period or current_period()
+    admin = is_admin(user_id)
+
+    def totals(query):
+        row = query.with_entities(
+            func.coalesce(func.sum(LlmUsage.prompt_tokens), 0),
+            func.coalesce(func.sum(LlmUsage.completion_tokens), 0),
+            func.coalesce(func.sum(LlmUsage.total_tokens), 0),
+            func.count(LlmUsage.id),
+        ).one()
+        return {
+            "prompt_tokens": int(row[0]),
+            "completion_tokens": int(row[1]),
+            "total_tokens": int(row[2]),
+            "calls": int(row[3]),
+        }
+
+    base = db.query(LlmUsage).filter(LlmUsage.period == target)
+    result = {
+        "period": target,
+        "mine": totals(base.filter(LlmUsage.user_id == user_id)),
+    }
+
+    if admin:
+        result["all_users"] = totals(base)
+        rows = (
+            db.query(
+                LlmUsage.user_id,
+                func.sum(LlmUsage.total_tokens).label("tokens"),
+                func.count(LlmUsage.id).label("calls"),
+            )
+            .filter(LlmUsage.period == target)
+            .group_by(LlmUsage.user_id)
+            .order_by(func.sum(LlmUsage.total_tokens).desc())
+            .limit(50)
+            .all()
+        )
+        result["by_user"] = [
+            {"user_id": r.user_id, "total_tokens": int(r.tokens or 0), "calls": int(r.calls)}
+            for r in rows
+        ]
+        daily = (
+            db.query(LlmUsage.day, func.sum(LlmUsage.total_tokens).label("tokens"))
+            .filter(LlmUsage.period == target)
+            .group_by(LlmUsage.day)
+            .order_by(LlmUsage.day)
+            .all()
+        )
+        result["by_day"] = [
+            {"day": d.day, "total_tokens": int(d.tokens or 0)} for d in daily
+        ]
+
+    return result

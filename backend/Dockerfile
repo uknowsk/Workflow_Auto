@@ -3,6 +3,10 @@ FROM python:3.11-slim
 
 WORKDIR /srv
 
+# GitHub 주소로 앱을 등록하려면 git 이 필요합니다.
+RUN apt-get update && apt-get install -y --no-install-recommends git \
+    && rm -rf /var/lib/apt/lists/*
+
 # 사내 PyPI 미러(Nexus 등)를 쓸 때는 아래 build-arg 로 넘기면 됩니다.
 #   docker compose build --build-arg PIP_INDEX_URL=https://nexus.내부/repository/pypi/simple
 ARG PIP_INDEX_URL=""

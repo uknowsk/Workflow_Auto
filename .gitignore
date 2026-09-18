@@ -24,3 +24,6 @@ npm-debug.log*
 config/apps.seed.json
 config/profiles/*.env
 !config/profiles/*.env.example
+
+# Next.js 빌드 캐시
+frontend/tsconfig.tsbuildinfo

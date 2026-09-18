@@ -8,6 +8,7 @@
 """
 from __future__ import annotations
 
+import json
 import re
 import time
 from dataclasses import dataclass, field
@@ -19,7 +20,9 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.llm import client as llm
 from app.mcp_client import client as mcp
-from app.models import App, AppCallLog, AppStatus, AppVisibility
+from app.audit import record as audit_record
+from app.audit import summarize
+from app.models import App, AppCallLog, AppStatus, AppVisibility, LlmUsage
 
 settings = get_settings()
 
@@ -70,6 +73,30 @@ class ToolBinding:
 class OrchestrationResult:
     result_text: str = ""
     steps: list[dict] = field(default_factory=list)
+
+
+def _log_usage(db: Session, reply: dict, user_id: str, run_id: str) -> None:
+    """LLM 토큰 사용량을 남깁니다. Gauss 요금 확인용입니다."""
+    usage = reply.get("usage") or {}
+    if not usage.get("total_tokens"):
+        return
+    now = datetime.now(timezone.utc)
+    try:
+        db.add(
+            LlmUsage(
+                user_id=user_id,
+                run_id=run_id,
+                model=reply.get("model", ""),
+                prompt_tokens=usage.get("prompt_tokens", 0),
+                completion_tokens=usage.get("completion_tokens", 0),
+                total_tokens=usage.get("total_tokens", 0),
+                period=now.strftime("%Y-%m"),
+                day=now.strftime("%Y-%m-%d"),
+            )
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
 
 
 def _log_call(
@@ -224,12 +251,77 @@ def to_openai_tools(bindings: list[ToolBinding]) -> list[dict]:
     ]
 
 
+PLAN_PROMPT = """너는 사내 업무 자동화 오케스트레이터다.
+사용자의 요청을 처리하려면 어떤 앱의 어떤 기능을, 어떤 순서로 써야 하는지
+계획만 세워라. 아직 실행하지는 마라.
+
+아래 JSON 형식 하나만 출력해라. 설명이나 코드펜스를 붙이지 마라.
+{"summary": "무엇을 할지 한두 문장", "steps": [{"tool": "<도구이름>", "why": "왜 필요한지"}]}
+
+쓸 도구가 없으면 steps 를 빈 배열로 두고 summary 에 이유를 적어라.
+"""
+
+
+def make_plan(
+    db: Session,
+    request_text: str,
+    bindings: list[ToolBinding],
+    user_id: str = "",
+    run_id: str = "",
+) -> tuple[str, list[dict], bool]:
+    """실행 전에 "무엇을 할지" 계획만 세웁니다.
+
+    되돌릴 수 없는 일(메일 발송, 결재 상신)을 하는 앱이 계획에 끼면,
+    실행하기 전에 사용자에게 보여 주고 확인을 받아야 합니다.
+
+    돌려주는 값: (요약, 단계 목록, 확인이 필요한가)
+    """
+    catalog = "\n".join(
+        f"- {b.function_name}: {b.description[:200]}" for b in bindings
+    )
+    reply = llm.chat(
+        [
+            {"role": "system", "content": PLAN_PROMPT},
+            {"role": "user", "content": f"[쓸 수 있는 도구]\n{catalog}\n\n[요청]\n{request_text}"},
+        ],
+        tools=None,
+    )
+    _log_usage(db, reply, user_id, run_id)
+
+    try:
+        parsed = json.loads(re.search(r"\{.*\}", reply["content"], re.S).group(0))
+    except (AttributeError, json.JSONDecodeError):
+        # 계획을 못 읽어도 실행은 막지 않습니다. 확인이 필요한 앱만 걸러 내면 됩니다.
+        parsed = {"summary": reply.get("content", "")[:500], "steps": []}
+
+    by_name = {b.function_name: b for b in bindings}
+    steps: list[dict] = []
+    needs_approval = False
+    for item in parsed.get("steps", []):
+        binding = by_name.get(item.get("tool", ""))
+        if binding is None:
+            continue
+        confirm = bool(binding.app.requires_confirmation)
+        needs_approval = needs_approval or confirm
+        steps.append(
+            {
+                "app": binding.app.name,
+                "tool": binding.tool_name,
+                "why": str(item.get("why", ""))[:300],
+                "requires_confirmation": confirm,
+            }
+        )
+
+    return str(parsed.get("summary", ""))[:1000], steps, needs_approval
+
+
 async def run_request(
     db: Session,
     request_text: str,
     app_ids: list[str] | None = None,
     user_id: str = "",
     run_id: str = "",
+    form_text: str = "",
     on_step: Callable[[list[dict]], None] | None = None,
 ) -> OrchestrationResult:
     """자연어 요청 1건을 끝까지 처리합니다."""
@@ -245,14 +337,23 @@ async def run_request(
             )
         )
 
+    system_prompt = SYSTEM_PROMPT
+    if form_text:
+        # 양식이 지정되면 결과를 그 틀에 맞춰 쓰게 합니다.
+        system_prompt += (
+            "\n\n최종 답은 반드시 아래 양식의 구조와 항목을 그대로 따라 작성해라.\n"
+            "[양식]\n" + form_text[:8000]
+        )
+
     messages: list[dict[str, Any]] = [
-        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "system", "content": system_prompt},
         {"role": "user", "content": request_text},
     ]
     steps: list[Step] = []
 
     for _ in range(settings.llm_max_steps):
         reply = llm.chat(messages, tools=tools)
+        _log_usage(db, reply, user_id, run_id)
 
         if not reply["tool_calls"]:
             return OrchestrationResult(
@@ -294,6 +395,22 @@ async def run_request(
                     duration_ms=int((time.monotonic() - started) * 1000),
                     error_summary=output if is_error else "",
                 )
+                # 감사 기록: 어떤 앱이 어떤 인자로 불렸고 무엇을 돌려줬는지
+                audit_record(
+                    db,
+                    user_id,
+                    "app_called",
+                    "app",
+                    binding.app.id,
+                    {
+                        "run_id": run_id,
+                        "app": binding.app.name,
+                        "tool": binding.tool_name,
+                        "arguments": summarize(call["arguments"]),
+                        "result": summarize(output),
+                        "success": not is_error,
+                    },
+                )
 
             step.output = output
             step.error = is_error
@@ -308,6 +425,7 @@ async def run_request(
         {"role": "user", "content": "여기까지 얻은 결과만으로 최종 결과물을 작성해라."}
     )
     final = llm.chat(messages, tools=None)
+    _log_usage(db, final, user_id, run_id)
     return OrchestrationResult(
         result_text=final["content"], steps=[s.as_dict() for s in steps]
     )

@@ -1,31 +1,58 @@
 // 백엔드 호출을 한 곳에 모아 둡니다.
-// 사용자 구분은 뼈대 단계에서 X-User-Id 헤더 하나로 합니다.
-// 사내에 붙일 때는 이 파일과 backend/app/deps.py 만 SSO 로 바꾸면 됩니다.
+// 로그인 토큰은 브라우저에 저장했다가 모든 요청에 붙입니다.
+// 사내 SSO 로 바꿀 때는 이 파일과 backend/app/auth/backend.py 만 손보면 됩니다.
 
 export const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000";
 
-export function getUserId(): string {
-  if (typeof window === "undefined") return "demo";
-  return window.localStorage.getItem("userId") || "demo";
+const TOKEN_KEY = "wfa_token";
+const USER_KEY = "wfa_user";
+
+export function getToken(): string {
+  if (typeof window === "undefined") return "";
+  return window.localStorage.getItem(TOKEN_KEY) || "";
 }
 
-export function setUserId(value: string) {
-  window.localStorage.setItem("userId", value);
+export function getSession(): { user_id: string; is_admin: boolean } | null {
+  if (typeof window === "undefined") return null;
+  const raw = window.localStorage.getItem(USER_KEY);
+  return raw ? JSON.parse(raw) : null;
+}
+
+export function saveSession(token: string, user_id: string, is_admin: boolean) {
+  window.localStorage.setItem(TOKEN_KEY, token);
+  window.localStorage.setItem(USER_KEY, JSON.stringify({ user_id, is_admin }));
+}
+
+export function clearSession() {
+  window.localStorage.removeItem(TOKEN_KEY);
+  window.localStorage.removeItem(USER_KEY);
 }
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      "X-User-Id": getUserId(),
-      ...(init.headers || {}),
-    },
-  });
+  const token = getToken();
+  const headers: Record<string, string> = {
+    ...(init.body instanceof FormData ? {} : { "Content-Type": "application/json" }),
+    ...((init.headers as Record<string, string>) || {}),
+  };
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  const response = await fetch(`${API_BASE}${path}`, { ...init, headers });
+  if (response.status === 401) {
+    clearSession();
+    if (typeof window !== "undefined" && !location.pathname.startsWith("/login")) {
+      location.href = "/login";
+    }
+    throw new Error("로그인이 필요합니다.");
+  }
   if (!response.ok) {
-    const detail = await response.text();
-    throw new Error(`${response.status} ${detail}`);
+    let detail = await response.text();
+    try {
+      detail = JSON.parse(detail).detail ?? detail;
+    } catch {
+      /* 본문이 JSON 이 아니면 그대로 씁니다 */
+    }
+    throw new Error(detail);
   }
   return response.status === 204 ? (undefined as T) : response.json();
 }
@@ -42,11 +69,16 @@ export type App = {
   owner: string;
   owner_dept: string;
   owner_contact: string;
+  owner_user_id: string;
   icon: string;
   endpoint: string;
   status: string;
   visibility: "private" | "pending" | "approved";
-  owner_user_id: string;
+  requires_confirmation: boolean;
+  runtime_location: "server" | "pc";
+  source_type: "manual" | "github" | "zip";
+  source_url: string;
+  package_version: string;
   last_error: string;
   tools: AppTool[];
 };
@@ -59,15 +91,39 @@ export type Card = {
   app_ids: string[];
   pinned: boolean;
 };
+export type PlanStep = {
+  app: string;
+  tool: string;
+  why: string;
+  requires_confirmation: boolean;
+};
 export type Run = {
   id: string;
   request_text: string;
-  status: "queued" | "running" | "succeeded" | "failed";
+  status:
+    | "queued"
+    | "planning"
+    | "awaiting_approval"
+    | "running"
+    | "succeeded"
+    | "failed"
+    | "rejected";
+  plan: PlanStep[];
+  plan_summary: string;
+  needs_approval: boolean;
   steps: { app: string; tool: string; error: boolean }[];
   result_text: string;
   error: string;
 };
-
+export type Form = {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  filename: string;
+  is_text: boolean;
+  uploaded_by: string;
+};
 export type Ranking = {
   period: string;
   ranking: {
@@ -80,31 +136,60 @@ export type Ranking = {
     owner: { user_id: string; name: string; dept: string; contact: string };
   }[];
 };
+export type Usage = {
+  period: string;
+  mine: { total_tokens: number; calls: number };
+  all_users?: { total_tokens: number; calls: number };
+  by_user?: { user_id: string; total_tokens: number; calls: number }[];
+};
+export type Notice = {
+  id: string;
+  kind: string;
+  title: string;
+  body: string;
+  read: boolean;
+  at: string;
+};
 
 export const api = {
+  login: (user_id: string, password: string) =>
+    request<{ token: string; user_id: string; name: string; is_admin: boolean }>(
+      "/api/auth/login",
+      { method: "POST", body: JSON.stringify({ user_id, password }) }
+    ),
+
   listApps: (mine = false) => request<App[]>(`/api/apps?mine=${mine}`),
   registerApp: (body: Record<string, unknown>) =>
     request<App>("/api/apps", { method: "POST", body: JSON.stringify(body) }),
-  refreshApp: (id: string) =>
-    request<App>(`/api/apps/${id}/refresh`, { method: "POST" }),
-  submitApp: (id: string) =>
-    request<App>(`/api/apps/${id}/submit`, { method: "POST" }),
-  approveApp: (id: string) =>
-    request<App>(`/api/apps/${id}/approve`, { method: "POST" }),
-  rejectApp: (id: string) =>
-    request<App>(`/api/apps/${id}/reject`, { method: "POST" }),
+  registerZip: (form: FormData) =>
+    request<App>("/api/apps/from-zip", { method: "POST", body: form }),
+  registerGithub: (form: FormData) =>
+    request<App>("/api/apps/from-github", { method: "POST", body: form }),
+  refreshApp: (id: string) => request<App>(`/api/apps/${id}/refresh`, { method: "POST" }),
+  submitApp: (id: string) => request<App>(`/api/apps/${id}/submit`, { method: "POST" }),
+  approveApp: (id: string) => request<App>(`/api/apps/${id}/approve`, { method: "POST" }),
+  rejectApp: (id: string) => request<App>(`/api/apps/${id}/reject`, { method: "POST" }),
   listPending: () => request<App[]>("/api/apps/pending"),
 
   listCards: () => request<Card[]>("/api/cards"),
   createCard: (body: Record<string, unknown>) =>
     request<Card>("/api/cards", { method: "POST", body: JSON.stringify(body) }),
-  deleteCard: (id: string) =>
-    request<void>(`/api/cards/${id}`, { method: "DELETE" }),
+  deleteCard: (id: string) => request<void>(`/api/cards/${id}`, { method: "DELETE" }),
 
-  appRanking: (period = "") =>
-    request<Ranking>(`/api/stats/apps${period ? `?period=${period}` : ""}`),
+  listForms: () => request<Form[]>("/api/forms"),
+  uploadForm: (form: FormData) =>
+    request<Form>("/api/forms", { method: "POST", body: form }),
+  deleteForm: (id: string) => request<void>(`/api/forms/${id}`, { method: "DELETE" }),
+  formDownloadUrl: (id: string) => `${API_BASE}/api/forms/${id}/download`,
 
   createRun: (body: Record<string, unknown>) =>
     request<Run>("/api/runs", { method: "POST", body: JSON.stringify(body) }),
   getRun: (id: string) => request<Run>(`/api/runs/${id}`),
+  approveRun: (id: string) => request<Run>(`/api/runs/${id}/approve`, { method: "POST" }),
+  rejectRun: (id: string) => request<Run>(`/api/runs/${id}/reject`, { method: "POST" }),
+
+  appRanking: () => request<Ranking>("/api/stats/apps"),
+  usage: () => request<Usage>("/api/stats/usage"),
+  notifications: () => request<Notice[]>("/api/notifications"),
+  audit: () => request<Record<string, unknown>[]>("/api/audit?limit=100"),
 };

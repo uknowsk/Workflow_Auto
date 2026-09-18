@@ -5,7 +5,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.models import AppStatus, AppVisibility, RunStatus
+from app.models import AppStatus, AppVisibility, RunStatus, RuntimeLocation, SourceType
 
 
 # ----------------------------- 앱스토어 -----------------------------
@@ -30,6 +30,14 @@ class AppRegisterIn(BaseModel):
         AppVisibility.private,
         description="private=나만 사용, pending=공식 등록 신청(관리자 승인 대기)",
     )
+    requires_confirmation: bool = Field(
+        False,
+        description="메일 발송·결재 상신처럼 되돌릴 수 없는 일을 하면 True. "
+        "실행 전에 사용자 확인을 받습니다.",
+    )
+    runtime_location: RuntimeLocation = Field(
+        RuntimeLocation.server, description="server=중앙 서버 구동, pc=개인 PC(Launcher)"
+    )
 
 
 class AppUpdateIn(BaseModel):
@@ -39,6 +47,7 @@ class AppUpdateIn(BaseModel):
     usage_hint: str | None = None
     category: str | None = None
     capability_tag: str | None = None
+    requires_confirmation: bool | None = None
     owner: str | None = None
     owner_dept: str | None = None
     owner_contact: str | None = None
@@ -70,6 +79,11 @@ class AppOut(BaseModel):
     endpoint: str
     status: AppStatus
     visibility: AppVisibility
+    requires_confirmation: bool
+    runtime_location: RuntimeLocation
+    source_type: SourceType
+    source_url: str
+    package_version: str
     owner_user_id: str
     last_error: str
     tools: list[AppToolOut] = []
@@ -103,6 +117,9 @@ class RunCreateIn(BaseModel):
     app_ids: list[str] = Field(
         default_factory=list, description="비우면 등록된 전체 앱을 후보로 사용"
     )
+    form_id: str | None = Field(
+        None, description="결과를 채워 넣을 양식. 비우면 자유 형식"
+    )
 
 
 class RunOut(BaseModel):
@@ -111,7 +128,12 @@ class RunOut(BaseModel):
     card_id: str | None
     request_text: str
     app_ids: list
+    form_id: str
     status: RunStatus
+    plan: list
+    plan_summary: str
+    needs_approval: bool
+    approved_by: str
     steps: list
     result_text: str
     error: str

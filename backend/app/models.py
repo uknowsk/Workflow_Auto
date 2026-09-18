@@ -1,10 +1,15 @@
 """데이터 모델.
 
-핵심 개념 4가지
-  App       : 앱스토어에 등록된 개발자 앱 (MCP 서버 한 대)
-  AppTool   : 그 앱이 제공하는 기능 하나 (MCP tool). 등록 시 자동으로 읽어옵니다.
-  AgentCard : 사용자가 "자주 쓰는 에이전트"로 만들어 둔 카드
-  Run       : 사용자의 자연어 요청 1건과 그 처리 결과
+핵심 개념
+  User        : 사번으로 로그인하는 사용자
+  App         : 앱스토어에 등록된 개발자 앱 (MCP 서버 한 대)
+  AppTool     : 그 앱이 제공하는 기능 하나 (MCP tool). 등록 시 자동으로 읽어옵니다.
+  AgentCard   : 사용자가 "자주 쓰는 에이전트"로 만들어 둔 카드
+  Run         : 사용자의 자연어 요청 1건과 그 처리 결과
+  FormTemplate: 결과를 채워 넣을 양식(엑셀/문서 틀). 중앙 서버에 보관합니다.
+  Launcher    : 개인 PC에 설치해 서버 요청을 대신 실행하는 작은 연결 프로그램
+  AuditLog    : 누가 언제 무엇을 했는지 남기는 감사 기록
+  LlmUsage    : Gauss 토큰 사용량
 """
 from __future__ import annotations
 
@@ -42,6 +47,21 @@ class AppStatus(str, enum.Enum):
     unreachable = "unreachable"  # 등록은 됐는데 최근 연결 실패
 
 
+class RuntimeLocation(str, enum.Enum):
+    """이 앱이 어디서 도나."""
+
+    server = "server"  # 중앙 서버에서 구동 (기본)
+    pc = "pc"          # 개인 PC에 설치해 구동. Launcher 가 대신 실행합니다.
+
+
+class SourceType(str, enum.Enum):
+    """앱 소스를 어떻게 받았나."""
+
+    manual = "manual"  # 이미 돌고 있는 어댑터 주소만 등록
+    github = "github"  # GitHub 주소로 등록
+    zip = "zip"        # ZIP 파일 업로드
+
+
 class AppVisibility(str, enum.Enum):
     """앱을 누가 쓸 수 있는지."""
 
@@ -51,10 +71,13 @@ class AppVisibility(str, enum.Enum):
 
 
 class RunStatus(str, enum.Enum):
-    queued = "queued"        # 큐에 들어감
-    running = "running"      # 처리 중
+    queued = "queued"                      # 큐에 들어감
+    planning = "planning"                  # 어떤 앱을 쓸지 계획을 세우는 중
+    awaiting_approval = "awaiting_approval"  # 되돌릴 수 없는 앱이 껴 있어 사용자 확인 대기
+    running = "running"                    # 처리 중
     succeeded = "succeeded"
     failed = "failed"
+    rejected = "rejected"                  # 사용자가 계획을 거부함
 
 
 class App(Base):
@@ -88,7 +111,27 @@ class App(Base):
     )
 
     # MCP streamable-HTTP 엔드포인트. 예) http://example-app:9001/mcp
-    endpoint: Mapped[str] = mapped_column(String(512))
+    # 서버 구동형은 서버가 앱을 띄운 뒤 이 값을 채웁니다.
+    endpoint: Mapped[str] = mapped_column(String(512), default="")
+
+    # --- 어디서 도는 앱인가 ---
+    runtime_location: Mapped[RuntimeLocation] = mapped_column(
+        Enum(RuntimeLocation, native_enum=False), default=RuntimeLocation.server
+    )
+    # PC 구동형일 때 이 앱을 실행해 줄 Launcher
+    launcher_id: Mapped[str] = mapped_column(String(36), default="", index=True)
+
+    # --- 소스를 어떻게 받았나 ---
+    source_type: Mapped[SourceType] = mapped_column(
+        Enum(SourceType, native_enum=False), default=SourceType.manual
+    )
+    source_url: Mapped[str] = mapped_column(String(512), default="")  # GitHub 주소
+    package_path: Mapped[str] = mapped_column(String(512), default="")  # 풀어 둔 폴더
+    package_version: Mapped[str] = mapped_column(String(64), default="")
+
+    # 되돌릴 수 없는 일(메일 발송, 결재 상신 등)을 하는 앱이면 True.
+    # 이런 앱이 계획에 끼면 오케스트레이터가 실행 전에 사용자에게 확인을 받습니다.
+    requires_confirmation: Mapped[bool] = mapped_column(Boolean, default=False)
     # 사내 인증이 필요하면 헤더로 넣습니다. 예) {"Authorization": "Bearer ..."}
     auth_headers: Mapped[dict] = mapped_column(JSON, default=dict)
 
@@ -96,6 +139,11 @@ class App(Base):
         Enum(AppStatus, native_enum=False), default=AppStatus.active
     )
     last_error: Mapped[str] = mapped_column(Text, default="")
+    # 마지막으로 "살아있니?" 확인에 성공한 시각
+    last_seen_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    consecutive_failures: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_now, onupdate=_now
@@ -158,6 +206,15 @@ class Run(Base):
     status: Mapped[RunStatus] = mapped_column(
         Enum(RunStatus, native_enum=False), default=RunStatus.queued, index=True
     )
+    # 실행 전에 세운 계획. 확인이 필요한 앱이 끼면 사용자에게 보여 주고 승인을 받습니다.
+    plan: Mapped[list] = mapped_column(JSON, default=list)
+    plan_summary: Mapped[str] = mapped_column(Text, default="")
+    needs_approval: Mapped[bool] = mapped_column(Boolean, default=False)
+    approved_by: Mapped[str] = mapped_column(String(128), default="")
+
+    # 결과를 채워 넣을 양식(FormTemplate.id). 비우면 자유 형식.
+    form_id: Mapped[str] = mapped_column(String(36), default="")
+
     # 오케스트레이터가 세운 계획과 앱 호출 기록 (화면에서 진행상황 보여주는 용도)
     steps: Mapped[list] = mapped_column(JSON, default=list)
     result_text: Mapped[str] = mapped_column(Text, default="")
@@ -194,4 +251,156 @@ class AppCallLog(Base):
     duration_ms: Mapped[int] = mapped_column(Integer, default=0)
     # 월별 집계를 빠르고 단순하게 하려고 'YYYY-MM' 을 따로 저장합니다.
     period: Mapped[str] = mapped_column(String(7), index=True, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class User(Base):
+    """사용자. 지금은 사번 + 비밀번호로 로그인합니다.
+
+    나중에 사내 SSO 를 붙이면 이 표는 "프로필 저장소" 역할만 하게 됩니다.
+    비밀번호는 원문을 저장하지 않고 해시만 저장합니다.
+    """
+
+    __tablename__ = "users"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(String(128), unique=True, index=True)  # 사번
+    name: Mapped[str] = mapped_column(String(128), default="")
+    dept: Mapped[str] = mapped_column(String(128), default="")
+    contact: Mapped[str] = mapped_column(String(256), default="")
+
+    password_hash: Mapped[str] = mapped_column(String(256), default="")
+    is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    last_login_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+
+class Launcher(Base):
+    """Launcher - 개인 PC에 설치하는 작은 연결 프로그램.
+
+    서버는 남의 PC에 깔린 앱을 직접 실행할 수 없습니다. 그래서 PC 쪽에서
+    서버로 "일 있나요?" 하고 물어보러 오는 방식을 씁니다(아웃바운드만 쓰므로
+    보안 환경에서도 방화벽을 열 필요가 없습니다).
+
+    앱스토어의 앱을 내 PC에 설치하는 일도 Launcher 가 맡습니다.
+    뼈대에서는 등록과 작업 주고받기 자리까지만 만들어 두었습니다.
+    실제 Launcher 프로그램은 다음 단계입니다.
+    """
+
+    __tablename__ = "launchers"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(String(128), index=True)  # 이 PC 주인
+    hostname: Mapped[str] = mapped_column(String(256), default="")
+    token_hash: Mapped[str] = mapped_column(String(256), default="")
+    last_seen_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class LauncherJob(Base):
+    """Launcher 가 가져가 실행할 작업 1건."""
+
+    __tablename__ = "launcher_jobs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    launcher_id: Mapped[str] = mapped_column(String(36), index=True)
+    app_id: Mapped[str] = mapped_column(String(36), default="")
+    tool_name: Mapped[str] = mapped_column(String(128), default="")
+    arguments: Mapped[dict] = mapped_column(JSON, default=dict)
+
+    status: Mapped[str] = mapped_column(String(16), default="pending", index=True)
+    output: Mapped[str] = mapped_column(Text, default="")
+    error: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    finished_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+
+class FormTemplate(Base):
+    """결과물을 채워 넣을 양식. 중앙 서버에 파일로 보관합니다.
+
+    예) 주간보고 양식.xlsx, 출장보고서.docx, 회의록 틀.md
+    """
+
+    __tablename__ = "form_templates"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    name: Mapped[str] = mapped_column(String(200), index=True)
+    description: Mapped[str] = mapped_column(Text, default="")
+    category: Mapped[str] = mapped_column(String(64), default="etc")
+
+    filename: Mapped[str] = mapped_column(String(256), default="")
+    content_type: Mapped[str] = mapped_column(String(128), default="")
+    stored_path: Mapped[str] = mapped_column(String(512), default="")
+    size_bytes: Mapped[int] = mapped_column(Integer, default=0)
+    # 텍스트 양식(.md/.txt)이면 본문을 그대로 담아 둡니다.
+    # 오케스트레이터가 이 틀에 맞춰 결과를 작성할 때 씁니다.
+    text_body: Mapped[str] = mapped_column(Text, default="")
+
+    uploaded_by: Mapped[str] = mapped_column(String(128), default="", index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class AuditLog(Base):
+    """감사 기록: 누가, 언제, 무엇을 했는지.
+
+    사내 보안 요건상 거의 확실히 요구됩니다. 로그인, 앱 등록/승인, 요청 실행,
+    앱 호출, 양식 다운로드처럼 사람이 한 행동을 남깁니다.
+    """
+
+    __tablename__ = "audit_logs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    actor: Mapped[str] = mapped_column(String(128), index=True, default="")  # 사번
+    action: Mapped[str] = mapped_column(String(64), index=True, default="")
+    target_type: Mapped[str] = mapped_column(String(32), default="")
+    target_id: Mapped[str] = mapped_column(String(64), default="", index=True)
+    # 요청문 요약, 앱 이름, 넘긴 인자 요약 등. 원문 전체는 담지 않습니다.
+    detail: Mapped[dict] = mapped_column(JSON, default=dict)
+    client_ip: Mapped[str] = mapped_column(String(64), default="")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_now, index=True
+    )
+
+
+class LlmUsage(Base):
+    """Gauss 토큰 사용량 1건. 청구서 보고 놀라지 않으려고 남깁니다."""
+
+    __tablename__ = "llm_usage"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(String(128), index=True, default="")
+    run_id: Mapped[str] = mapped_column(String(36), default="")
+    model: Mapped[str] = mapped_column(String(128), default="")
+
+    prompt_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    completion_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    total_tokens: Mapped[int] = mapped_column(Integer, default=0)
+
+    period: Mapped[str] = mapped_column(String(7), index=True, default="")  # YYYY-MM
+    day: Mapped[str] = mapped_column(String(10), index=True, default="")    # YYYY-MM-DD
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class Notification(Base):
+    """등록자에게 보내는 알림. 뼈대에서는 기록만 남기고 화면에서 보여 줍니다.
+
+    예) "내 앱이 3회 연속 응답하지 않습니다"
+    """
+
+    __tablename__ = "notifications"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(String(128), index=True, default="")
+    kind: Mapped[str] = mapped_column(String(32), default="info")
+    title: Mapped[str] = mapped_column(String(256), default="")
+    body: Mapped[str] = mapped_column(Text, default="")
+    target_id: Mapped[str] = mapped_column(String(64), default="")
+    read: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)

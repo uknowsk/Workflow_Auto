@@ -22,6 +22,25 @@ class Settings(BaseSettings):
     # 등록된 앱(MCP 서버) 호출 타임아웃
     mcp_timeout: float = 60.0
 
+    # --- 로그인 ---
+    # 토큰 서명에 쓰는 비밀값. 회사에서는 반드시 긴 임의 문자열로 바꾸세요.
+    secret_key: str = "change-me-in-production"
+    token_ttl_seconds: int = 60 * 60 * 12  # 12시간
+    auth_backend: str = "password"  # password | sso (sso 는 아직 자리만)
+    # 개발 편의: X-User-Id 헤더만으로 로그인한 척할 수 있게 합니다.
+    # 회사 배포에서는 반드시 false 로 두세요.
+    dev_header_auth: bool = True
+    # 서버가 처음 뜰 때 만들 최초 관리자 계정(이미 있으면 건너뜁니다)
+    bootstrap_admin_id: str = ""
+    bootstrap_admin_password: str = ""
+
+    # --- 파일 보관 위치 (앱 패키지, 양식) ---
+    data_dir: str = "/srv/data"
+
+    # --- 앱 생존 확인 ---
+    healthcheck_interval_seconds: int = 300  # 5분마다. 0 이면 끔
+    healthcheck_failure_threshold: int = 3   # 연속 3회 실패하면 등록자에게 알림
+
     # 서버가 뜰 때 자동 등록할 앱 목록 파일. 비우면 아무것도 등록하지 않습니다.
     # 예) SEED_FILE=config/apps.seed.json
     seed_file: str = ""
