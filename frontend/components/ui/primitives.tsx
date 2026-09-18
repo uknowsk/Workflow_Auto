@@ -376,6 +376,20 @@ export function Empty({ children }: { children: ReactNode }) {
   return <div className="ui-empty">{children}</div>;
 }
 
+/** 앱이 돌려준 여러 줄 글. 줄바꿈은 지키되 본문 글꼴로 읽히게 합니다. */
+export function Lines({
+  boxed,
+  className,
+  ...rest
+}: HTMLAttributes<HTMLDivElement> & { boxed?: boolean }) {
+  return (
+    <div
+      {...rest}
+      className={cx("ui-lines", boxed && "ui-lines--boxed", className)}
+    />
+  );
+}
+
 /** 원문·로그처럼 그대로 보여 줄 때 */
 export function Pre({ className, ...rest }: HTMLAttributes<HTMLPreElement>) {
   return <pre {...rest} className={cx("ui-pre", className)} />;

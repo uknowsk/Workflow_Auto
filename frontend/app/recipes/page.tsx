@@ -12,8 +12,8 @@ import {
   Field,
   IconTile,
   Muted,
+  Lines,
   PageTitle,
-  Pre,
   Row,
   Section,
   SectionHead,
@@ -228,7 +228,7 @@ export default function Recipes() {
                 ))}
               </ul>
             )}
-            {run.result_text && <Pre>{run.result_text}</Pre>}
+            {run.result_text && <Lines boxed>{run.result_text}</Lines>}
             {run.error && (
               <Alert tone="crit" style={{ marginTop: "var(--space-3)" }}>
                 {run.error}

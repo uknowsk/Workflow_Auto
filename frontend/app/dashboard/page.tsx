@@ -9,10 +9,10 @@ import {
   Bar,
   Empty,
   Grid,
+  Lines,
   Muted,
   PageTitle,
   Panel,
-  Pre,
   Row,
   Rows,
   Section,
@@ -62,7 +62,7 @@ function Widget({ widget }: { widget: DashboardWidget }) {
       }
       count={widget.app ? <Tag>{widget.app}</Tag> : undefined}
     >
-      {widget.status === "ok" && <Pre>{widget.text}</Pre>}
+      {widget.status === "ok" && <Lines>{widget.text}</Lines>}
       {widget.status === "empty" && (
         <Muted style={{ paddingBottom: "var(--space-3)" }}>지금은 없습니다. 👍</Muted>
       )}

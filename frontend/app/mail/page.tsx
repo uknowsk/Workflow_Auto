@@ -9,8 +9,8 @@ import {
   Card,
   Empty,
   Muted,
+  Lines,
   PageTitle,
-  Pre,
   Row,
   Tag,
 } from "@/components/ui";
@@ -145,7 +145,9 @@ export default function MailBox() {
               )}
             </Row>
             {openId === mail.id && (
-              <Pre style={{ marginTop: "var(--space-3)" }}>{body}</Pre>
+              <Lines boxed style={{ marginTop: "var(--space-3)" }}>
+                {body}
+              </Lines>
             )}
           </Card>
         ))

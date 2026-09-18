@@ -12,8 +12,8 @@ import {
   Grid,
   IconTile,
   Muted,
+  Lines,
   PageTitle,
-  Pre,
   Row,
   Section,
   SectionHead,
@@ -136,7 +136,7 @@ export default function Home() {
         <Field
           label="편하게 한 문장으로 적어 주세요."
           htmlFor="ask"
-          hint="누가·무엇을·어떤 형식으로 를 넣으면 더 잘 알아듣습니다"
+          hint="누가, 무엇을, 어떤 형식으로 를 적어 주면 더 잘 알아듣습니다"
         >
           <Textarea
             id="ask"
@@ -245,7 +245,7 @@ export default function Home() {
                 ))}
               </ul>
             )}
-            {run.result_text && <Pre>{run.result_text}</Pre>}
+            {run.result_text && <Lines boxed>{run.result_text}</Lines>}
             {run.error && (
               <Alert tone="crit" style={{ marginTop: "var(--space-3)" }}>
                 {run.error}

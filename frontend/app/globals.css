@@ -98,6 +98,10 @@ body {
   font-size: var(--text-base);
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
+  /* 한글은 단어 중간에서 줄이 끊기면 읽기 나쁩니다. 띄어쓰기에서만 끊습니다.
+     대신 띄어쓰기 없는 긴 영문·주소는 상자를 넘지 않게 따로 끊어 줍니다. */
+  word-break: keep-all;
+  overflow-wrap: break-word;
 }
 
 a {
@@ -786,6 +790,24 @@ code {
   background: var(--ok-soft);
   border-color: var(--ok-line);
   color: var(--ok);
+}
+
+/* 앱이 돌려준 여러 줄 글. 줄바꿈만 지키고 글꼴은 본문 그대로 둡니다.
+   (코드나 로그가 아니면 .ui-pre 말고 이걸 쓰세요) */
+.ui-lines {
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0 0 var(--space-3);
+  color: var(--ink-2);
+  line-height: 1.7;
+}
+
+/* 본문을 상자에 담아 앞뒤 내용과 구분할 때 */
+.ui-lines--boxed {
+  background: var(--surface-2);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
 }
 
 .ui-pre {

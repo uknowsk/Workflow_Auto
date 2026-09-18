@@ -10,6 +10,7 @@ import {
   Empty,
   IconTile,
   Muted,
+  Lines,
   PageTitle,
   Pre,
   Row,
@@ -169,7 +170,9 @@ export default function Admin() {
                   <b>{notice.title}</b>
                   {!notice.read && <Badge tone="accent">읽지 않음</Badge>}
                 </Row>
-                <Pre style={{ marginTop: "var(--space-2)" }}>{notice.body}</Pre>
+                <Lines boxed style={{ marginTop: "var(--space-2)" }}>
+                  {notice.body}
+                </Lines>
                 <Muted style={{ marginTop: "var(--space-2)" }}>{notice.at}</Muted>
               </Card>
             ))
