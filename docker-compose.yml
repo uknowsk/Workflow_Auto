@@ -1,6 +1,27 @@
 # 전체 실행:  docker compose up -d --build
 # 사내 폐쇄망이라면 .env 에 PIP_INDEX_URL 을 넣어 사내 PyPI 미러를 쓰세요.
 
+# 공식 앱 7개가 함께 쓰는 설정. 아래 app-* 서비스들이 이것을 그대로 물려받습니다.
+x-official-app: &official-app
+  build:
+    context: ./official_apps
+    args:
+      PIP_INDEX_URL: ${PIP_INDEX_URL:-}
+      PIP_TRUSTED_HOST: ${PIP_TRUSTED_HOST:-}
+  image: workflow-auto-official-apps
+  env_file: [.env]
+  volumes:
+    # 앱들이 만든 기록과 채워 만든 파일이 여기에 쌓입니다.
+    - officialdata:/srv/data
+  restart: unless-stopped
+
+x-official-app-env: &official-app-env
+  DATA_DIR: /srv/data
+  # 산출물 앱이 플랫폼 양식 저장소도 같이 쓰게 하려면 .env 에서 채우세요.
+  WORKFLOW_API_BASE: ${WORKFLOW_API_BASE:-}
+  WORKFLOW_API_USER: ${WORKFLOW_API_USER:-}
+  WORKFLOW_API_TOKEN: ${WORKFLOW_API_TOKEN:-}
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -110,6 +131,69 @@ services:
     depends_on: [example-legacy]
     restart: unless-stopped
 
+  # ── 공식 앱 7개 (official_apps/) ────────────────────────────────────
+  # 이미지 하나에 7개 앱이 들어 있고, command 로 어떤 앱을 띄울지 고릅니다.
+  # 아래 &official-app 은 반복되는 설정을 한 번만 쓰기 위한 YAML 문법입니다.
+
+  app-dev-projects:
+    <<: *official-app
+    command: ["python", "-m", "dev_projects.server"]
+    environment:
+      <<: *official-app-env
+      PORT: "9101"
+      # 채운 엑셀·워드 파일을 내려받을 때 쓰는 주소
+      PUBLIC_BASE_URL: ${OFFICIAL_APPS_HOST:-http://localhost}:9101
+    ports: ["9101:9101"]
+
+  app-achievements:
+    <<: *official-app
+    command: ["python", "-m", "achievements.server"]
+    environment:
+      <<: *official-app-env
+      PORT: "9102"
+    ports: ["9102:9102"]
+
+  app-weekly-report:
+    <<: *official-app
+    command: ["python", "-m", "weekly_report.server"]
+    environment:
+      <<: *official-app-env
+      PORT: "9103"
+    ports: ["9103:9103"]
+
+  app-toolbox:
+    <<: *official-app
+    command: ["python", "-m", "toolbox.server"]
+    environment:
+      <<: *official-app-env
+      PORT: "9104"
+    ports: ["9104:9104"]
+
+  app-meeting-scheduler:
+    <<: *official-app
+    command: ["python", "-m", "meeting_scheduler.server"]
+    environment:
+      <<: *official-app-env
+      PORT: "9105"
+    ports: ["9105:9105"]
+
+  app-approvals:
+    <<: *official-app
+    command: ["python", "-m", "approvals.server"]
+    environment:
+      <<: *official-app-env
+      PORT: "9106"
+    ports: ["9106:9106"]
+
+  app-docs-assistant:
+    <<: *official-app
+    command: ["python", "-m", "docs_assistant.server"]
+    environment:
+      <<: *official-app-env
+      PORT: "9107"
+    ports: ["9107:9107"]
+
 volumes:
   pgdata:
   appdata:
+  officialdata:

@@ -1,0 +1,89 @@
+{
+  "_설명": "우리가 직접 만들어 올린 공식 앱 목록입니다. official_apps/ 폴더의 앱들이고, 서버가 뜰 때 앱스토어에 자동 등록됩니다.",
+  "apps": [
+    {
+      "slug": "dev-projects",
+      "name": "개발 프로젝트 관리",
+      "endpoint": "http://app-dev-projects:9101/mcp",
+      "description": "내가 속한 개발 프로젝트를 등록/조회하고, 단계별로 내야 하는 산출물을 알려 주고, 양식(마크다운·엑셀·워드·PPT)에 내용을 채워 산출물 초안을 만듭니다.",
+      "usage_hint": "개발 프로젝트 목록, 단계별 산출물, 양식을 채운 산출물 초안이 필요할 때 사용",
+      "category": "프로젝트",
+      "capability_tag": "개발프로젝트관리",
+      "owner": "로아빠",
+      "owner_dept": "플랫폼개발팀",
+      "icon": "📁"
+    },
+    {
+      "slug": "achievements",
+      "name": "업적 정리 (고과 근거자료)",
+      "endpoint": "http://app-achievements:9102/mcp",
+      "description": "수행한 업무를 기간별로 모아 고과 평가에 제출할 수 있는 형태로 정리합니다. 다른 앱의 기록을 한 번에 가져와 쌓을 수도 있습니다.",
+      "usage_hint": "내가 한 일 정리, 고과나 실적 근거자료가 필요할 때 사용",
+      "category": "인사",
+      "capability_tag": "업적관리",
+      "owner": "로아빠",
+      "owner_dept": "플랫폼개발팀",
+      "icon": "🏅"
+    },
+    {
+      "slug": "weekly-report",
+      "name": "주간보고 자동 생성",
+      "endpoint": "http://app-weekly-report:9103/mcp",
+      "description": "이번 주에 한 일과 다음 주 계획을 모아 주간업무보고 초안을 만들고 보관합니다. 지난주 계획을 이번 주 실적 초안으로 끌어올 수 있습니다.",
+      "usage_hint": "주간보고나 월간 요약을 쓸 때 사용",
+      "category": "보고",
+      "capability_tag": "주간보고작성",
+      "owner": "로아빠",
+      "owner_dept": "플랫폼개발팀",
+      "icon": "🗓️"
+    },
+    {
+      "slug": "toolbox",
+      "name": "도구 모음 (계산기·단위변환·세계시계)",
+      "endpoint": "http://app-toolbox:9104/mcp",
+      "description": "계산, 단위 변환, 도시별 현재 시각, 날짜와 근무일 계산을 해 줍니다.",
+      "usage_hint": "계산, 단위 변환, 해외 시차, 기한 날짜 계산이 필요할 때 사용",
+      "category": "도구",
+      "capability_tag": "계산도구",
+      "owner": "로아빠",
+      "owner_dept": "플랫폼개발팀",
+      "icon": "🧮"
+    },
+    {
+      "slug": "meeting-scheduler",
+      "name": "회의 일정 조율",
+      "endpoint": "http://app-meeting-scheduler:9105/mcp",
+      "description": "참석자와 후보 시간을 받아 가능한 시간을 취합하고, 가장 많은 사람이 되는 시간으로 확정안과 안내문 초안을 만듭니다. 메일 발송은 메일 앱이 맡습니다.",
+      "usage_hint": "회의 시간을 잡거나 참석자 가능 시간을 취합할 때 사용",
+      "category": "회의",
+      "capability_tag": "회의일정조율",
+      "owner": "로아빠",
+      "owner_dept": "플랫폼개발팀",
+      "icon": "🤝"
+    },
+    {
+      "slug": "approval-tracker",
+      "name": "결재/승인 추적",
+      "endpoint": "http://app-approvals:9106/mcp",
+      "description": "내가 올린 결재·승인 요청의 현재 단계와 며칠째 멈춰 있는지를 등록하고 조회합니다. 결재 상신은 하지 않습니다.",
+      "usage_hint": "올린 결재가 어디서 멈춰 있는지 확인할 때 사용",
+      "category": "결재",
+      "capability_tag": "결재추적",
+      "owner": "로아빠",
+      "owner_dept": "플랫폼개발팀",
+      "icon": "📋"
+    },
+    {
+      "slug": "docs-assistant",
+      "name": "문서 요약/번역",
+      "endpoint": "http://app-docs-assistant:9107/mcp",
+      "description": "긴 사양서나 영문 자료를 요약하고, 보고용 한 장 요약을 만들고, 한국어와 영어로 번역합니다.",
+      "usage_hint": "긴 문서를 요약하거나 번역해야 할 때 사용",
+      "category": "문서",
+      "capability_tag": "문서요약번역",
+      "owner": "로아빠",
+      "owner_dept": "플랫폼개발팀",
+      "icon": "📝"
+    }
+  ]
+}

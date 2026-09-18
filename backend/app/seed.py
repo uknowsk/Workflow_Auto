@@ -1,6 +1,6 @@
 """앱 목록 자동 등록.
 
-SEED_FILE 로 지정한 JSON 을 읽어 앱스토어에 등록합니다.
+SEED_FILE 로 지정한 JSON(쉼표로 여러 개 가능)을 읽어 앱스토어에 등록합니다.
 회사에서는 사내 앱 목록 파일만 바꿔 끼우면 되고, 코드는 건드릴 필요가 없습니다.
 이미 등록된 slug 는 건너뛰므로 서버를 몇 번 재시작해도 안전합니다.
 """
@@ -51,6 +51,18 @@ async def _sync(db, app: App) -> None:
 
 
 async def seed_from_file(path: str) -> None:
+    """SEED_FILE 에 적힌 목록 파일(들)을 등록합니다.
+
+    쉼표로 여러 개를 적을 수 있습니다. 예시 앱 목록과 공식 앱 목록처럼
+    성격이 다른 목록을 따로 관리할 때 편합니다.
+      SEED_FILE=config/apps.seed.example.json,config/apps.seed.official.json
+    """
+    for one in (p.strip() for p in path.split(",")):
+        if one:
+            await _seed_one_file(one)
+
+
+async def _seed_one_file(path: str) -> None:
     file = Path(path)
     if not file.is_file():
         logger.warning("[seed] 파일이 없어 건너뜁니다: %s", file)
