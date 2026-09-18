@@ -31,6 +31,7 @@ def get_db() -> Iterator[Session]:
 _ADDED_COLUMNS: dict[str, dict[str, str]] = {
     "runs": {"recipe_id": "VARCHAR(36)", "schedule_id": "VARCHAR(36)", "variables": "JSON"},
     "agent_cards": {"recipe_id": "VARCHAR(36)"},
+    "users": {"theme": "VARCHAR(32) DEFAULT 'white'"},
 }
 
 

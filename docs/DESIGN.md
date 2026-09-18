@@ -217,3 +217,56 @@ cd frontend && npm run dev       # localhost:3000 에서 눈으로 확인
 
 화면을 하나 만들었으면 브라우저 창을 좁게 줄여 보세요.
 가로 560px 아래에서 카드가 한 줄씩 쌓이고 표가 넘치지 않으면 됩니다.
+
+---
+
+## 6. 겹쳐 뜨는 상자 (Modal)
+
+자주 하지 않는 일(앱 등록처럼)은 화면에 늘 펼쳐 두지 말고 버튼 뒤에 넣습니다.
+목록이 기본 화면이고, 필요할 때만 상자가 열리는 구조입니다.
+
+```tsx
+const [open, setOpen] = useState(false);
+
+<Button onClick={() => setOpen(true)}>＋ 앱 등록</Button>
+
+<Modal
+  open={open}
+  onClose={() => setOpen(false)}
+  title="내 앱 등록하기"
+  sub="한 줄 설명"
+  footer={<Button onClick={save}>등록하기</Button>}
+>
+  …입력 칸들…
+</Modal>
+```
+
+Esc 로 닫히고, 열려 있는 동안 뒤 화면은 따라 스크롤되지 않습니다.
+
+---
+
+## 7. 테마
+
+화면 전체 모양은 `<html data-theme="…">` 한 글자로 갈아 끼웁니다.
+화면 코드(.tsx)는 전혀 손대지 않습니다.
+
+| 파일 | 하는 일 |
+| --- | --- |
+| `app/globals.css` | 기본 테마 "미니멀 화이트" (토큰 + `.ui-*` 규칙) |
+| `app/themes.css` | 그 위에 덧씌우는 다른 테마들 |
+| `lib/theme.ts` | 고를 수 있는 테마 목록, 저장·적용 |
+| `components/ui/theme-picker.tsx` | 오른쪽 위 고르는 메뉴 |
+| `backend` `PUT /api/auth/me/settings` | 고른 값을 개인 계정에 저장 |
+
+새 테마를 넣는 자세한 순서는 `app/themes.css` 맨 위 주석에 적어 두었습니다.
+**테마가 하나뿐일 때는 고르는 메뉴가 나오지 않습니다.**
+
+틀은 `.ui-shell` 안에 `.ui-nav`(메뉴)와 `.ui-wrap`(본문) 둘뿐이라,
+이 둘을 좌우로 세우면 세로 메뉴 테마가 됩니다.
+
+```css
+[data-theme="example"] .ui-shell {
+  display: grid;
+  grid-template-columns: var(--nav-width) minmax(0, 1fr);
+}
+```

@@ -233,12 +233,29 @@ export type DrawingSummary = {
 };
 export type DrawingFull = DrawingSummary & { image: string };
 
+export type Me = {
+  user_id: string;
+  name: string;
+  dept: string;
+  contact: string;
+  is_admin: boolean;
+  /** 개인 계정에 저장된 화면 테마 */
+  theme: string;
+};
+
 export const api = {
   login: (user_id: string, password: string) =>
     request<{ token: string; user_id: string; name: string; is_admin: boolean }>(
       "/api/auth/login",
       { method: "POST", body: JSON.stringify({ user_id, password }) }
     ),
+
+  me: () => request<Me>("/api/auth/me"),
+  saveSettings: (body: { theme?: string }) =>
+    request<Me>("/api/auth/me/settings", {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
 
   listApps: (mine = false) => request<App[]>(`/api/apps?mine=${mine}`),
   registerApp: (body: Record<string, unknown>) =>

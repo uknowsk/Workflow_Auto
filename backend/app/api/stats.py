@@ -13,7 +13,7 @@ from sqlalchemy import case, distinct, func
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.deps import current_user, is_admin
+from app.deps import current_user, is_admin, require_admin
 from app.models import App, AppCallLog, LlmUsage
 
 router = APIRouter(prefix="/api/stats", tags=["통계"])
@@ -23,14 +23,20 @@ def current_period() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m")
 
 
-@router.get("/apps", summary="앱 활용도 순위(이달의 앱)")
-def app_ranking(
+@router.get("/apps", summary="앱 활용도 순위(이달의 앱) - 관리자 전용")
+def app_ranking_api(
+    admin: str = Depends(require_admin),
     db: Session = Depends(get_db),
     period: str | None = Query(
         default=None, description="집계할 달. YYYY-MM. 비우면 이번 달."
     ),
     limit: int = Query(default=20, le=100),
 ) -> dict:
+    return app_ranking(db, period, limit)
+
+
+def app_ranking(db: Session, period: str | None = None, limit: int = 20) -> dict:
+    """순위 계산 알맹이. 권한 검사는 부르는 쪽에서 합니다."""
     target = period or current_period()
 
     success_count = func.sum(case((AppCallLog.success.is_(True), 1), else_=0))
@@ -81,9 +87,10 @@ def app_ranking(
     return {"period": target, "ranking": ranking}
 
 
-@router.get("/apps/{app_id}/failures", summary="앱 실패 내역(유지보수용)")
+@router.get("/apps/{app_id}/failures", summary="앱 실패 내역(유지보수용) - 관리자 전용")
 def recent_failures(
     app_id: str,
+    admin: str = Depends(require_admin),
     db: Session = Depends(get_db),
     limit: int = Query(default=20, le=100),
 ) -> list[dict]:

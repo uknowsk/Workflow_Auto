@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { api, Ranking, Usage } from "@/lib/api";
+import { api, getSession, Ranking, Usage } from "@/lib/api";
 import {
   Alert,
   Badge,
@@ -20,11 +20,26 @@ export default function Stats() {
   const [data, setData] = useState<Ranking | null>(null);
   const [usage, setUsage] = useState<Usage | null>(null);
   const [error, setError] = useState("");
+  // 앱 순위는 관리자만 봅니다. 주소를 직접 쳐서 들어오면 대시보드로 돌려보냅니다.
+  const [allowed, setAllowed] = useState<boolean | null>(null);
 
   useEffect(() => {
+    const session = getSession();
+    if (!session) {
+      location.href = "/login";
+      return;
+    }
+    if (!session.is_admin) {
+      setAllowed(false);
+      location.href = "/dashboard";
+      return;
+    }
+    setAllowed(true);
     api.appRanking().then(setData).catch((e) => setError(String(e)));
     api.usage().then(setUsage).catch(() => undefined);
   }, []);
+
+  if (allowed !== true) return null;
 
   // 1위를 100%로 놓고 막대 길이를 정합니다.
   const top = data?.ranking[0]?.success_calls || 1;

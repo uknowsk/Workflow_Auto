@@ -72,8 +72,14 @@
   --shadow-card: 0 1px 3px rgba(26, 26, 23, 0.06);
   --shadow-pop: 0 4px 16px rgba(26, 26, 23, 0.1);
 
+  /* --- 겹치는 면 --- */
+  --topbar-bg: rgba(255, 255, 255, 0.92);   /* 위 고정 바 (살짝 비침) */
+  --scrim: rgba(26, 26, 23, 0.34);          /* 모달 뒤를 덮는 막 */
+
   /* --- 레이아웃 --- */
   --page-max: 1080px;
+  --nav-width: 208px;      /* 세로 메뉴 테마에서만 씁니다 */
+  --serif-weight: 400;
 
   color-scheme: light;
 }
@@ -157,7 +163,7 @@ code {
   position: sticky;
   top: 0;
   z-index: 20;
-  background: rgba(255, 255, 255, 0.92);
+  background: var(--topbar-bg);
   backdrop-filter: blur(8px);
   border-bottom: 1px solid var(--line);
 }
@@ -951,6 +957,294 @@ pre:not([class]) {
   border-radius: var(--radius-md);
   font-family: var(--font-mono);
   font-size: 12.5px;
+}
+
+/* ============================================================
+   틀: 테마에 따라 위아래(기본)가 되기도 하고 좌우가 되기도 함
+   ------------------------------------------------------------
+   .ui-shell 안에는 딱 둘만 들어갑니다 — .ui-nav(메뉴)와 .ui-wrap(본문).
+   "관제실" 테마는 이 둘을 좌우로 세워서 세로 메뉴를 만듭니다.
+   ============================================================ */
+
+.ui-shell {
+  display: block;
+}
+
+.ui-nav {
+  display: block;
+}
+
+.ui-nav__menu {
+  padding-bottom: 0;
+}
+
+/* 메뉴 묶음. 기본 테마에서는 묶음이 없는 것처럼 한 줄로 이어 붙입니다. */
+.ui-tabs__group {
+  display: contents;
+}
+.ui-tabs__label {
+  display: none;
+}
+
+.ui-brand__name {
+  white-space: nowrap;
+}
+.ui-topbar__id {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ============================================================
+   테마 고르기 (오른쪽 위)
+   ============================================================ */
+
+.ui-theme {
+  position: relative;
+}
+.ui-theme__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 30px;
+  padding: 4px 10px 4px 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--bg);
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition-property: color, background-color, border-color;
+  transition-duration: 120ms;
+  transition-timing-function: ease-out;
+}
+.ui-theme__btn:hover {
+  border-color: var(--accent-line);
+  color: var(--accent);
+}
+.ui-theme__now {
+  white-space: nowrap;
+}
+
+/* 색 세 칸짜리 미리보기 */
+.ui-swatch {
+  display: inline-flex;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  overflow: hidden;
+  flex: none;
+}
+.ui-swatch i {
+  display: block;
+  width: 8px;
+  height: 16px;
+}
+
+.ui-theme__menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 40;
+  width: 290px;
+  max-width: calc(100vw - 32px);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  /* 바깥 모서리 = 안쪽 모서리 + 안쪽 여백 (겹쳐 보이지 않게) */
+  border-radius: calc(var(--radius-md) + 6px);
+  box-shadow: var(--shadow-pop);
+  padding: 6px;
+}
+.ui-theme__head,
+.ui-theme__foot {
+  margin: 0;
+  padding: 6px 9px;
+  font-size: var(--text-xs);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-family: var(--font-mono);
+}
+.ui-theme__foot {
+  text-transform: none;
+  letter-spacing: 0;
+  font-family: inherit;
+  font-size: 11.5px;
+  border-top: 1px solid var(--line-soft);
+  margin-top: 4px;
+}
+.ui-theme__item {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  padding: 9px;
+  font: inherit;
+  color: var(--ink);
+  cursor: pointer;
+  transition-property: background-color, border-color;
+  transition-duration: 120ms;
+  transition-timing-function: ease-out;
+}
+.ui-theme__item:hover {
+  background: var(--surface);
+}
+.ui-theme__item--on {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+}
+.ui-theme__item .ui-swatch i {
+  height: 20px;
+  width: 10px;
+}
+.ui-theme__text {
+  display: block;
+  min-width: 0;
+}
+.ui-theme__text b {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+}
+.ui-theme__text span {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+  text-wrap: pretty;
+}
+
+/* ============================================================
+   겹쳐 뜨는 상자 (앱 등록 등)
+   ============================================================ */
+
+.ui-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: var(--space-4);
+}
+.ui-modal__back {
+  position: absolute;
+  inset: 0;
+  background: var(--scrim);
+}
+.ui-modal__box {
+  position: relative;
+  width: min(680px, 100%);
+  max-height: min(86vh, 900px);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: calc(var(--radius-lg) + 4px);
+  box-shadow: var(--shadow-pop);
+  overflow: hidden;
+}
+.ui-modal__head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--line);
+}
+.ui-modal__head > :last-child {
+  margin-left: auto;
+}
+.ui-modal__title {
+  margin: 0;
+  font-size: var(--text-lg);
+  letter-spacing: -0.015em;
+  text-wrap: balance;
+}
+.ui-modal__sub {
+  margin: 3px 0 0;
+  color: var(--muted);
+  font-size: 12.5px;
+  text-wrap: pretty;
+}
+.ui-modal__body {
+  padding: var(--space-5);
+  overflow: auto;
+}
+.ui-modal__foot {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  padding: var(--space-3) var(--space-5);
+  border-top: 1px solid var(--line);
+  background: var(--surface);
+  flex-wrap: wrap;
+}
+
+/* ============================================================
+   마무리 손질
+   ------------------------------------------------------------
+   글줄이 어색하게 끊기지 않게, 바뀌는 숫자가 들썩이지 않게,
+   누르는 느낌이 나게. (make-interfaces-feel-better 점검표)
+   ============================================================ */
+
+.ui-page-title,
+.ui-app__name,
+.ui-list__title,
+h1,
+h2,
+h3 {
+  text-wrap: balance;
+}
+.ui-page-sub,
+.ui-app__desc,
+.ui-muted,
+.ui-empty,
+.ui-field__label,
+.ui-list__meta {
+  text-wrap: pretty;
+}
+
+/* 값이 바뀌는 숫자는 자리를 고정해 들썩이지 않게 */
+.ui-count,
+.ui-when,
+.ui-stat,
+.ui-stat b,
+.ui-mono,
+.ui-table .num {
+  font-variant-numeric: tabular-nums;
+}
+
+/* 바뀌는 성질만 골라서 전환합니다 (transition: all 금지) */
+.ui-btn,
+.ui-chip,
+.ui-tab,
+.ui-card--hoverable,
+.ui-input,
+.ui-textarea,
+.ui-select {
+  transition-property: color, background-color, border-color, box-shadow, transform;
+  transition-duration: 130ms;
+  transition-timing-function: ease-out;
+}
+.ui-btn:active:not(:disabled),
+.ui-chip:active {
+  transform: translateY(1px);
+}
+
+/* 작은 버튼도 손가락이 닿는 범위는 넉넉하게 */
+.ui-btn--sm,
+.ui-chip {
+  min-height: 30px;
+}
+
+/* 카드 안에 카드를 넣지 않습니다. 한 겹 안에서는 선으로만 나눕니다. */
+.ui-card .ui-card,
+.ui-panel .ui-card {
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  background: none;
 }
 
 /* ============================================================
