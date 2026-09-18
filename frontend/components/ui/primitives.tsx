@@ -131,13 +131,19 @@ export function Panel({
 
 export function Row({
   between,
+  nowrap,
   className,
   ...rest
-}: HTMLAttributes<HTMLDivElement> & { between?: boolean }) {
+}: HTMLAttributes<HTMLDivElement> & { between?: boolean; nowrap?: boolean }) {
   return (
     <div
       {...rest}
-      className={cx("ui-row", between && "ui-row--between", className)}
+      className={cx(
+        "ui-row",
+        between && "ui-row--between",
+        nowrap && "ui-row--nowrap",
+        className
+      )}
     />
   );
 }

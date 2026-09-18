@@ -238,7 +238,7 @@ code {
 }
 .ui-eyebrow {
   font-size: var(--text-xs);
-  letter-spacing: 0.08em;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--muted);
   font-family: var(--font-mono);
@@ -261,6 +261,12 @@ code {
 }
 .ui-row--between {
   justify-content: space-between;
+}
+.ui-row--nowrap {
+  flex-wrap: nowrap;
+}
+.ui-row--nowrap > :first-child {
+  min-width: 0;
 }
 .ui-grid {
   display: grid;
@@ -294,6 +300,15 @@ code {
 }
 .ui-card--hoverable:hover {
   box-shadow: var(--shadow-card);
+}
+/* 카드 여러 개를 나란히 둘 때 버튼 줄을 아래에 맞춰 줍니다. */
+.ui-card--stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.ui-card--stack > :last-child {
+  margin-top: auto;
 }
 
 /* 안쪽에 목록이 들어가는 패널 */
@@ -887,7 +902,7 @@ button.ghost:disabled {
   opacity: 0.45;
   cursor: default;
 }
-input:not([class]),
+input:not([class]):not([type="checkbox"]):not([type="radio"]),
 textarea:not([class]),
 select:not([class]) {
   width: 100%;

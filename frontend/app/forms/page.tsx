@@ -67,18 +67,18 @@ export default function Forms() {
       ) : (
         <Grid>
           {forms.map((form) => (
-            <Card key={form.id} hoverable>
-              <Row between>
-                <Row>
+            <Card key={form.id} hoverable className="ui-card--stack">
+              <Row between nowrap>
+                <Row nowrap>
                   <IconTile>📄</IconTile>
                   <b>{form.name}</b>
                 </Row>
                 {form.is_text && <Badge tone="accent">자동 적용</Badge>}
               </Row>
-              <Muted style={{ margin: "var(--space-2) 0 var(--space-3)" }}>
+              <Muted>
                 {form.filename} · {form.category} · 올린 사람 {form.uploaded_by || "-"}
               </Muted>
-              <Row>
+              <Row style={{ marginTop: "var(--space-2)" }}>
                 <LinkButton href={api.formDownloadUrl(form.id)} small>
                   내려받기
                 </LinkButton>

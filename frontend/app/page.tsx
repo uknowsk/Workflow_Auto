@@ -254,34 +254,35 @@ export default function Home() {
         ) : (
           <Grid>
             {cards.map((card) => (
-              <Card key={card.id} hoverable>
-                <Row between>
-                  <Row>
+              <Card key={card.id} hoverable className="ui-card--stack">
+                <Row between nowrap>
+                  <Row nowrap>
                     <IconTile>{card.icon || "⭐"}</IconTile>
                     <b>{card.title}</b>
                   </Row>
                   <Button
                     variant="ghost"
                     small
+                    aria-label={`${card.title} 카드 삭제`}
                     onClick={() => api.deleteCard(card.id).then(reload)}
                   >
                     삭제
                   </Button>
                 </Row>
-                <Muted style={{ margin: "var(--space-2) 0 var(--space-3)" }}>
-                  {card.prompt_template || "요청문 없음"}
-                </Muted>
-                <Button
-                  variant="ghost"
-                  small
-                  onClick={() => {
-                    setText(card.prompt_template);
-                    setCardId(card.id);
-                    window.scrollTo({ top: 0, behavior: "smooth" });
-                  }}
-                >
-                  이 카드로 요청
-                </Button>
+                <Muted>{card.prompt_template || "요청문 없음"}</Muted>
+                <div style={{ marginTop: "var(--space-2)" }}>
+                  <Button
+                    variant="ghost"
+                    small
+                    onClick={() => {
+                      setText(card.prompt_template);
+                      setCardId(card.id);
+                      window.scrollTo({ top: 0, behavior: "smooth" });
+                    }}
+                  >
+                    이 카드로 요청
+                  </Button>
+                </div>
               </Card>
             ))}
           </Grid>
