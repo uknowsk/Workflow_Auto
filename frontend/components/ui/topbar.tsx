@@ -2,17 +2,18 @@
 // 왼쪽에 로고, 오른쪽에 테마 고르기와 로그인한 사람.
 
 import type { ReactNode } from "react";
+import Link from "next/link";
 
 export function TopBar({ right }: { right?: ReactNode }) {
   return (
     <div className="ui-topbar">
       <div className="ui-topbar__in">
-        <a className="ui-brand" href="/">
+        <Link className="ui-brand" href="/">
           <span className="ui-brand__mark" aria-hidden="true">
             W
           </span>
           <span className="ui-brand__name">Workflow Auto</span>
-        </a>
+        </Link>
         {right ? <div className="ui-topbar__who">{right}</div> : null}
       </div>
     </div>

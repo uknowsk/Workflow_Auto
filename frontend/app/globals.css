@@ -1257,11 +1257,17 @@ h3 {
 :root {
   --dock-w: 68px;      /* 왼쪽 인덱스 폭. 본문은 이만큼 오른쪽으로 밀립니다. */
   --topbar-h: 53px;    /* 위 고정 바 높이. 서랍은 그 아래에서 시작합니다. */
+  --drawer-top: 104px; /* 메뉴줄이 끝나는 높이. 화면이 뜨면 dock.tsx 가 실제 값으로 고칩니다. */
 }
 
 /* 본문이 인덱스에 가리지 않도록 그만큼 비워 둡니다. */
 body {
   padding-left: var(--dock-w);
+}
+
+/* 인덱스를 띄우지 않는 화면(로그인, 도구)에서는 그 여백도 없앱니다. */
+body.no-dock {
+  padding-left: 0;
 }
 
 .tdock {
@@ -1328,7 +1334,9 @@ body {
 .tdrawer {
   position: fixed;
   left: var(--dock-w);
-  top: var(--topbar-h);
+  /* 위쪽 메뉴줄 아래에서 시작합니다. 덮어 버리면 도구를 열어 둔 채로는
+     다른 화면으로 갈 수가 없습니다. --drawer-top 은 dock.tsx 가 재서 넣어 줍니다. */
+  top: var(--drawer-top);
   bottom: 0;
   z-index: 29;
   width: 0;
