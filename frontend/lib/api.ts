@@ -217,6 +217,22 @@ export type Notice = {
   at: string;
 };
 
+export type Note = {
+  id: string;
+  title: string;
+  body: string;
+  pinned: boolean;
+  updated_at: string;
+};
+export type DrawingSummary = {
+  id: string;
+  title: string;
+  width: number;
+  height: number;
+  updated_at: string;
+};
+export type DrawingFull = DrawingSummary & { image: string };
+
 export type Me = {
   user_id: string;
   name: string;
@@ -307,4 +323,39 @@ export const api = {
   usage: () => request<Usage>("/api/stats/usage"),
   notifications: () => request<Notice[]>("/api/notifications"),
   audit: () => request<Record<string, unknown>[]>("/api/audit?limit=100"),
+
+  // ── 도구 서랍 (메모·그림) ────────────────────────────────────────
+  listNotes: () => request<Note[]>("/api/tools/notes"),
+  createNote: (body: { title: string; body: string; pinned?: boolean }) =>
+    request<Note>("/api/tools/notes", { method: "POST", body: JSON.stringify(body) }),
+  updateNote: (id: string, body: { title: string; body: string; pinned?: boolean }) =>
+    request<Note>(`/api/tools/notes/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+  deleteNote: (id: string) =>
+    request<void>(`/api/tools/notes/${id}`, { method: "DELETE" }),
+
+  listDrawings: () => request<DrawingSummary[]>("/api/tools/drawings"),
+  getDrawing: (id: string) => request<DrawingFull>(`/api/tools/drawings/${id}`),
+  createDrawing: (body: {
+    title: string;
+    image: string;
+    width: number;
+    height: number;
+  }) =>
+    request<DrawingSummary>("/api/tools/drawings", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  updateDrawing: (
+    id: string,
+    body: { title: string; image: string; width: number; height: number }
+  ) =>
+    request<DrawingSummary>(`/api/tools/drawings/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+  deleteDrawing: (id: string) =>
+    request<void>(`/api/tools/drawings/${id}`, { method: "DELETE" }),
 };

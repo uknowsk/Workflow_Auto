@@ -2,6 +2,7 @@ import "./globals.css";
 import "./themes.css";
 import type { Metadata } from "next";
 import Nav from "./nav";
+import ToolDock from "@/components/tools/dock";
 import { THEME_BOOT_SCRIPT } from "@/lib/theme";
 
 export const metadata: Metadata = {
@@ -23,6 +24,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <Nav />
           <div className="ui-wrap">{children}</div>
         </div>
+        {/* 왼쪽 구석 도구 서랍. 어느 화면에서든 같은 자리에 있습니다. */}
+        <ToolDock />
       </body>
     </html>
   );
