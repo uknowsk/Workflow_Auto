@@ -79,6 +79,66 @@ DEFAULT_WIDGETS: list[dict] = [
 ]
 
 
+# ── 앱이 돌려준 답을 사람이 읽을 수 있는 몇 줄로 ──────────────────────
+# 앱은 MCP 규약대로 JSON 을 돌려줍니다. 그대로 화면에 뿌리면 첫 화면이
+# 중괄호로 뒤덮이므로, 여기서 "제목 · 곁들이는 말" 형태의 줄로 바꿉니다.
+# 앱 이름을 박아 두지 않고 흔히 쓰는 칸 이름만 봅니다. 모르는 모양이면
+# 원래 답을 그대로 둡니다(앱이 새로 생겨도 이 코드를 고칠 일이 없게).
+
+_TITLE_KEYS = ("title", "subject", "name", "label", "summary", "text")
+_WHO_KEYS = ("owner", "to_name", "assignee", "orderer", "approver", "participant")
+_STATE_KEYS = ("stage", "current_step", "role", "status_text")
+_DATE_KEYS = ("due", "due_date", "reply_due", "deadline", "date", "when")
+_LIST_SKIP = {"count", "overdue_count", "unreplied_count", "sent_count", "replied_count"}
+_MAX_LINES = 6
+
+
+def _line(item: object) -> str:
+    """항목 하나를 한 줄로."""
+    if not isinstance(item, dict):
+        return str(item)
+    head = next((str(item[k]) for k in _TITLE_KEYS if item.get(k)), "")
+    if not head:
+        return ", ".join(f"{k} {v}" for k, v in list(item.items())[:3])
+    tail: list[str] = []
+    for keys in (_WHO_KEYS, _STATE_KEYS):
+        value = next((str(item[k]) for k in keys if item.get(k)), "")
+        if value:
+            tail.append(value)
+    date = next((str(item[k]) for k in _DATE_KEYS if item.get(k)), "")
+    if date:
+        tail.append(f"{date}까지")
+    days = item.get("days_left")
+    if isinstance(days, int) and not isinstance(days, bool):
+        tail.append("오늘 마감" if days == 0 else (f"{-days}일 지남" if days < 0 else f"{days}일 남음"))
+    return f"{head} · {' · '.join(tail)}" if tail else head
+
+
+def summarize(text: str) -> str:
+    """앱의 JSON 답을 짧은 목록으로. 못 알아보면 받은 그대로 돌려줍니다."""
+    try:
+        payload = json.loads(text)
+    except (json.JSONDecodeError, TypeError):
+        return text
+    if isinstance(payload, dict):
+        rows = next(
+            (v for k, v in payload.items() if k not in _LIST_SKIP and isinstance(v, list)),
+            None,
+        )
+    elif isinstance(payload, list):
+        rows = payload
+    else:
+        return text
+    if rows is None:
+        return text
+    if not rows:
+        return ""
+    lines = [_line(row) for row in rows[:_MAX_LINES]]
+    if len(rows) > _MAX_LINES:
+        lines.append(f"… 외 {len(rows) - _MAX_LINES}건")
+    return "\n".join(lines)
+
+
 @lru_cache
 def load_widgets() -> list[dict]:
     path = settings.dashboard_widgets_file
@@ -155,8 +215,13 @@ async def _fetch_widget(
         result["text"] = f"앱을 부르지 못했습니다: {exc}"
         return result
 
-    result["status"] = "error" if is_error else ("ok" if text.strip() else "empty")
-    result["text"] = text[:2000]
+    if is_error:
+        result["status"] = "error"
+        result["text"] = text[:2000]
+        return result
+    readable = summarize(text)
+    result["status"] = "ok" if readable.strip() else "empty"
+    result["text"] = readable[:2000]
     return result
 
 
