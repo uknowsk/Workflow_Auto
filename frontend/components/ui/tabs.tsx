@@ -3,6 +3,7 @@
 // - Tabs: 같은 화면 안에서 내용만 바꾸는 탭 (관리자 화면처럼).
 
 import type { ReactNode } from "react";
+import Link from "next/link";
 import { cx } from "./primitives";
 
 export type NavTabItem = { href: string; label: ReactNode };
@@ -31,14 +32,17 @@ export function NavTabs({
             const active =
               item.href === "/" ? current === "/" : current.startsWith(item.href);
             return (
-              <a
+              // Link 로 옮기면 화면만 갈아끼웁니다. 그냥 <a> 였을 때는 메뉴를
+              // 누를 때마다 페이지를 통째로 새로 받아서, 열어 둔 도구와 돌아가던
+              // 타이머가 매번 처음으로 돌아갔습니다.
+              <Link
                 key={item.href}
                 href={item.href}
                 className={cx("ui-tab")}
                 aria-current={active ? "page" : undefined}
               >
                 {item.label}
-              </a>
+              </Link>
             );
           })}
         </div>

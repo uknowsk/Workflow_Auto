@@ -102,11 +102,43 @@ export default function ToolDock() {
 
   const open = useMemo(() => findTool(openKey), [openKey]);
 
-  // 로그인 화면에는 서랍을 띄우지 않습니다.
-  if (pathname.startsWith("/login")) return null;
+  // 로그인 화면에는 아예 없고, 도구 화면에서는 접어 둡니다.
+  // 도구 화면에는 같은 도구가 이미 넓게 펼쳐져 있어서, 서랍까지 열려 있으면
+  // 같은 것이 두 번 나오고 화면을 반쯤 가립니다.
+  const hideAll = pathname.startsWith("/login");
+  const tucked = pathname.startsWith("/tools");
 
+  // 서랍이 없는 화면에서는 왼쪽 여백도 비워 두지 않습니다.
+  useEffect(() => {
+    const body = document.body;
+    body.classList.toggle("no-dock", hideAll || tucked);
+    return () => body.classList.remove("no-dock");
+  }, [hideAll, tucked]);
+
+  // 서랍이 위쪽 메뉴줄을 덮으면, 도구를 열어 둔 채로는 다른 화면으로 갈 수가
+  // 없습니다. 메뉴줄 높이를 재서 그 아래부터 펼치게 합니다(글씨 크기나 화면
+  // 폭에 따라 달라질 수 있어 숫자로 박아 두지 않습니다).
+  useEffect(() => {
+    const menu = document.querySelector(".ui-tabs");
+    if (!menu) return;
+    const apply = () => {
+      // 문서 맨 위에서 메뉴줄 끝까지의 거리. 화면을 내려도 값이 변하지 않게
+      // 스크롤한 만큼을 더해 둡니다.
+      const bottom = menu.getBoundingClientRect().bottom + window.scrollY;
+      document.documentElement.style.setProperty("--drawer-top", `${Math.round(bottom)}px`);
+    };
+    apply();
+    const watch = new ResizeObserver(apply);
+    watch.observe(menu);
+    return () => watch.disconnect();
+  }, [pathname]);
+
+  if (hideAll) return null;
+
+  // 접을 때 지우지 않고 숨기기만 하는 이유: 그리다 만 그림과 돌아가는 타이머를
+  // 그대로 두기 위해서입니다. 도구 화면에서 나오면 있던 그대로 다시 나타납니다.
   return (
-    <>
+    <div hidden={tucked}>
       <nav className="tdock" aria-label="도구">
         <span className="tdock__cap" aria-hidden="true">
           도구
@@ -167,6 +199,6 @@ export default function ToolDock() {
             })}
         </div>
       </section>
-    </>
+    </div>
   );
 }
