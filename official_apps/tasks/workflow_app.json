@@ -1,0 +1,12 @@
+{
+  "name": "할 일/수명업무 관리",
+  "description": "할 일과 상급자 지시(수명업무)를 담당자·기한과 함께 등록하고, 기한 임박·지연 목록을 확인합니다.",
+  "usage_hint": "할 일을 등록하거나 목록을 보거나 완료 처리할 때, 기한이 다가온 일을 찾을 때 사용",
+  "category": "업무관리",
+  "capability_tag": "할일관리",
+  "icon": "✅",
+  "version": "1.0.0",
+  "runtime": "server",
+  "requires_confirmation": false,
+  "entrypoint": "server.py"
+}

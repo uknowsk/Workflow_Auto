@@ -1,0 +1,67 @@
+{
+  "_설명": [
+    "첫 화면(개인 대시보드)에 어떤 칸을 띄울지 적는 파일입니다.",
+    ".env 에 DASHBOARD_WIDGETS_FILE=config/dashboard.widgets.json 처럼 적어 쓰세요.",
+    "",
+    "capability_tag : 이 칸을 채워 줄 앱의 '역할 태그'. 같은 태그를 단 앱을 찾아 부릅니다.",
+    "                 내가 올린 개인용 앱이 있으면 그것을 먼저 씁니다.",
+    "                 아래 값은 공식 앱이 실제로 달고 있는 태그입니다",
+    "                 (config/apps.seed.example.json, apps.seed.official.json 참고).",
+    "tool           : 그 앱에서 부를 기능 이름.",
+    "arguments      : 기능에 넘길 값. {{user_id}} {{user_name}} {{today}} {{now}} 를 쓸 수 있습니다.",
+    "                 할 일 앱처럼 담당자를 '이름'으로 들고 있는 앱에는 {{user_name}} 을 넘깁니다.",
+    "hint           : 그런 앱이 아직 없을 때 화면에 대신 보여 줄 안내 문구.",
+    "",
+    "해당 앱이 없으면 그 칸은 빈 칸으로 두고 넘어갑니다. 나중에 앱이 등록되면",
+    "코드를 고치지 않아도 그날부터 채워집니다."
+  ],
+  "widgets": [
+    {
+      "key": "today_tasks",
+      "title": "곧 마감인 할 일 (3일 내)",
+      "icon": "✅",
+      "capability_tag": "할일관리",
+      "tool": "list_due_soon",
+      "arguments": {
+        "days": 3,
+        "owner": "{{user_name}}"
+      },
+      "hint": "할 일 앱(역할 태그 할일관리)을 앱스토어에 등록하면 여기에 채워집니다."
+    },
+    {
+      "key": "awaiting_replies",
+      "title": "회신 안 온 메일",
+      "icon": "📮",
+      "capability_tag": "사내메일",
+      "tool": "list_unreplied",
+      "arguments": {
+        "overdue_only": false
+      },
+      "hint": "사내 메일 앱(역할 태그 사내메일)을 등록하면 여기에 채워집니다."
+    },
+    {
+      "key": "assignments",
+      "title": "수명업무",
+      "icon": "📌",
+      "capability_tag": "할일관리",
+      "tool": "list_tasks",
+      "arguments": {
+        "kind": "order",
+        "status": "open",
+        "owner": "{{user_name}}"
+      },
+      "hint": "할 일 앱(역할 태그 할일관리)을 등록하면 여기에 채워집니다."
+    },
+    {
+      "key": "deliverables",
+      "title": "내 프로젝트 · 다음 산출물",
+      "icon": "📁",
+      "capability_tag": "개발프로젝트관리",
+      "tool": "list_my_projects",
+      "arguments": {
+        "user_id": "{{user_id}}"
+      },
+      "hint": "개발 프로젝트 앱(역할 태그 개발프로젝트관리)을 등록하면 여기에 채워집니다."
+    }
+  ]
+}

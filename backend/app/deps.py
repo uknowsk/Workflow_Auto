@@ -9,6 +9,7 @@
 """
 from fastapi import Depends, Header, HTTPException
 
+from app.auth.backend import is_configured_admin
 from app.auth.tokens import read_token
 from app.config import get_settings
 
@@ -40,12 +41,12 @@ def is_admin_token(authorization: str = Header(default="")) -> bool:
 
 
 def is_admin(user_id: str) -> bool:
-    """환경변수 ADMIN_USER_IDS 에 있으면 관리자입니다.
+    """환경변수 ADMIN_USER_IDS(사번) 또는 ADMIN_SSO_IDS(SSO 아이디)에 있으면 관리자입니다.
 
     계정의 is_admin 플래그는 로그인 토큰에 담겨 오는데, 환경변수 쪽을
     같이 보는 이유는 "DB가 비어 있어도 관리자가 들어갈 수 있게" 하기 위해서입니다.
     """
-    return user_id in get_settings().admins
+    return is_configured_admin(user_id)
 
 
 def require_admin(

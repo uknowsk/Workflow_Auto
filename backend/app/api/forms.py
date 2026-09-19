@@ -121,7 +121,8 @@ def download_form(
     )
 
 
-@router.delete("/{form_id}", status_code=204, summary="양식 삭제")
+@router.delete("/{form_id}", status_code=204, response_model=None,
+               summary="양식 삭제")
 def delete_form(
     form_id: str,
     request: Request,

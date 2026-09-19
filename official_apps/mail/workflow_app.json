@@ -1,0 +1,12 @@
+{
+  "name": "사내 메일",
+  "description": "사내 메일을 보내고, 회신 여부를 확인하고, 회신하지 않은 사람에게 리마인드를 보냅니다. 연결 방식(가짜 메일함/사내 SMTP)은 어댑터로 갈아끼웁니다.",
+  "usage_hint": "메일을 보내거나, 보낸 메일의 회신 여부를 확인하거나, 미회신자에게 리마인드할 때 사용",
+  "category": "메일",
+  "capability_tag": "사내메일",
+  "icon": "📧",
+  "version": "1.0.0",
+  "runtime": "server",
+  "requires_confirmation": true,
+  "entrypoint": "server.py"
+}

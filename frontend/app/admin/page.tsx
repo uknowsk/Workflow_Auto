@@ -2,6 +2,24 @@
 
 import { useEffect, useState } from "react";
 import { api, App, Notice, Usage } from "@/lib/api";
+import {
+  Alert,
+  Badge,
+  Button,
+  Card,
+  Empty,
+  IconTile,
+  Muted,
+  Lines,
+  PageTitle,
+  Pre,
+  Row,
+  Section,
+  Table,
+  Tabs,
+  Tag,
+  type TabItem,
+} from "@/components/ui";
 
 type Tab = "pending" | "usage" | "audit" | "notices";
 
@@ -32,118 +50,134 @@ export default function Admin() {
     reload();
   }, []);
 
-  const tabs: [Tab, string][] = [
-    ["pending", `승인 대기 ${pending.length}`],
-    ["usage", "Gauss 사용량"],
-    ["audit", "감사 기록"],
-    ["notices", `알림 ${notices.filter((n) => !n.read).length}`],
+  const unread = notices.filter((n) => !n.read).length;
+  const tabs: TabItem<Tab>[] = [
+    { key: "pending", label: `승인 대기 ${pending.length}` },
+    { key: "usage", label: "Gauss 사용량" },
+    { key: "audit", label: "감사 기록" },
+    { key: "notices", label: `알림 ${unread}` },
   ];
 
   return (
     <>
-      <div className="row" style={{ marginBottom: 16 }}>
-        {tabs.map(([key, label]) => (
-          <button
-            key={key}
-            className={tab === key ? "" : "ghost"}
-            onClick={() => setTab(key)}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+      <PageTitle title="관리자" sub="앱 승인, 사용량, 감사 기록을 여기서 봅니다." />
 
-      {message && <div className="box muted">{message}</div>}
+      <Tabs items={tabs} value={tab} onChange={setTab} />
+
+      {message && (
+        <Alert tone="warn" style={{ marginTop: "var(--space-5)" }}>
+          {message}
+        </Alert>
+      )}
 
       {tab === "pending" && (
-        <>
-          {pending.length === 0 && !message && (
-            <div className="box muted">대기 중인 앱이 없습니다.</div>
+        <Section>
+          {pending.length === 0 && !message ? (
+            <Empty>대기 중인 앱이 없습니다.</Empty>
+          ) : (
+            pending.map((app) => (
+              <Card key={app.id} style={{ marginBottom: "var(--space-3)" }}>
+                <Row>
+                  <IconTile>{app.icon || "🧩"}</IconTile>
+                  <b>{app.name}</b>
+                  {app.requires_confirmation && (
+                    <Badge tone="warn">되돌릴 수 없는 작업</Badge>
+                  )}
+                </Row>
+                <Muted style={{ margin: "var(--space-2) 0" }}>
+                  {app.usage_hint || app.description}
+                </Muted>
+                <Row style={{ marginBottom: "var(--space-3)" }}>
+                  <Tag>
+                    올린 사람 {app.owner || app.owner_user_id || "-"}
+                    {app.owner_contact && ` · ${app.owner_contact}`}
+                  </Tag>
+                  <Tag>기능 {app.tools.length}개</Tag>
+                  {app.capability_tag && <Tag>역할 {app.capability_tag}</Tag>}
+                </Row>
+                <Row>
+                  <Button onClick={() => api.approveApp(app.id).then(reload)}>
+                    공식 승인
+                  </Button>
+                  <Button variant="ghost" onClick={() => api.rejectApp(app.id).then(reload)}>
+                    반려 (개인용으로 되돌림)
+                  </Button>
+                </Row>
+              </Card>
+            ))
           )}
-          {pending.map((app) => (
-            <div className="box" key={app.id}>
-              <b>
-                {app.icon} {app.name}
-              </b>
-              <div className="muted">
-                올린 사람: {app.owner || app.owner_user_id || "-"}
-                {app.owner_contact && ` · ${app.owner_contact}`} · 기능{" "}
-                {app.tools.length}개
-                {app.capability_tag && ` · 역할: ${app.capability_tag}`}
-              </div>
-              <div className="muted">{app.usage_hint || app.description}</div>
-              {app.requires_confirmation && (
-                <div className="muted">⚠️ 되돌릴 수 없는 작업을 하는 앱입니다</div>
-              )}
-              <div className="row" style={{ marginTop: 8 }}>
-                <button onClick={() => api.approveApp(app.id).then(reload)}>
-                  공식 승인
-                </button>
-                <button className="ghost" onClick={() => api.rejectApp(app.id).then(reload)}>
-                  반려 (개인용으로 되돌림)
-                </button>
-              </div>
-            </div>
-          ))}
-        </>
+        </Section>
       )}
 
       {tab === "usage" && usage && (
-        <div className="box">
-          <b>{usage.period} Gauss 사용량</b>
-          <p className="muted">
-            전체 {usage.all_users?.total_tokens.toLocaleString() ?? "-"} 토큰 ·
-            호출 {usage.all_users?.calls ?? "-"}회
-            <br />
-            지금은 확인만 하고 한도로 막지는 않습니다.
-          </p>
-          <table style={{ width: "100%", fontSize: 13 }}>
-            <thead>
-              <tr>
-                <th align="left">사번</th>
-                <th align="right">토큰</th>
-                <th align="right">호출</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(usage.by_user || []).map((row) => (
-                <tr key={row.user_id}>
-                  <td>{row.user_id}</td>
-                  <td align="right">{row.total_tokens.toLocaleString()}</td>
-                  <td align="right">{row.calls}</td>
+        <Section>
+          <Card>
+            <b>{usage.period} Gauss 사용량</b>
+            <Muted style={{ margin: "var(--space-2) 0 var(--space-4)" }}>
+              전체 {usage.all_users?.total_tokens.toLocaleString() ?? "-"} 토큰 · 호출{" "}
+              {usage.all_users?.calls ?? "-"}회. 지금은 확인만 하고 한도로 막지는
+              않습니다.
+            </Muted>
+            <Table>
+              <thead>
+                <tr>
+                  <th>사번</th>
+                  <th className="num">토큰</th>
+                  <th className="num">호출</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {(usage.by_user || []).map((row) => (
+                  <tr key={row.user_id}>
+                    <td>{row.user_id}</td>
+                    <td className="num">{row.total_tokens.toLocaleString()}</td>
+                    <td className="num">{row.calls}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+          </Card>
+        </Section>
       )}
 
       {tab === "audit" && (
-        <div className="box">
-          <b>감사 기록 (최근 100건)</b>
-          <p className="muted">누가, 언제, 어떤 앱을 어떤 내용으로 불렀는지 남습니다.</p>
-          <pre style={{ maxHeight: 460, overflow: "auto" }}>
-            {audit
-              .map(
-                (row) =>
-                  `${row.at}  ${row.actor}  ${row.action}  ${row.target ?? ""}\n    ${JSON.stringify(row.detail)}`
-              )
-              .join("\n")}
-          </pre>
-        </div>
+        <Section>
+          <Card>
+            <b>감사 기록 (최근 100건)</b>
+            <Muted style={{ margin: "var(--space-2) 0 var(--space-3)" }}>
+              누가, 언제, 어떤 앱을 어떤 내용으로 불렀는지 남습니다.
+            </Muted>
+            <Pre style={{ maxHeight: 460, overflow: "auto" }}>
+              {audit
+                .map(
+                  (row) =>
+                    `${row.at}  ${row.actor}  ${row.action}  ${row.target ?? ""}\n    ${JSON.stringify(row.detail)}`
+                )
+                .join("\n")}
+            </Pre>
+          </Card>
+        </Section>
       )}
 
       {tab === "notices" && (
-        <>
-          {notices.length === 0 && <div className="box muted">알림이 없습니다.</div>}
-          {notices.map((notice) => (
-            <div className="box" key={notice.id}>
-              <b>{notice.read ? "" : "🔴 "}{notice.title}</b>
-              <pre className="muted">{notice.body}</pre>
-              <div className="muted">{notice.at}</div>
-            </div>
-          ))}
-        </>
+        <Section>
+          {notices.length === 0 ? (
+            <Empty>알림이 없습니다.</Empty>
+          ) : (
+            notices.map((notice) => (
+              <Card key={notice.id} style={{ marginBottom: "var(--space-3)" }}>
+                <Row between>
+                  <b>{notice.title}</b>
+                  {!notice.read && <Badge tone="accent">읽지 않음</Badge>}
+                </Row>
+                <Lines boxed style={{ marginTop: "var(--space-2)" }}>
+                  {notice.body}
+                </Lines>
+                <Muted style={{ marginTop: "var(--space-2)" }}>{notice.at}</Muted>
+              </Card>
+            ))
+          )}
+        </Section>
       )}
     </>
   );

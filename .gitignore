@@ -16,6 +16,10 @@ npm-debug.log*
 .env
 .env.local
 
+# 공식 앱이 로컬 실행 때 만드는 데이터 파일
+*.db
+*.sqlite3
+
 # 기타
 .DS_Store
 *.log
@@ -27,3 +31,6 @@ config/profiles/*.env
 
 # Next.js 빌드 캐시
 frontend/tsconfig.tsbuildinfo
+
+# 공식 앱이 만든 기록과 파일 (컨테이너 볼륨에 쌓입니다)
+official_apps/data/

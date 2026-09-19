@@ -16,7 +16,7 @@ from app.deps import current_user
 from app.models import AgentCard, Run, RunStatus
 from app.schemas import RunCreateIn, RunOut
 from app.worker.queue import get_queue
-from app.worker.tasks import process_run
+from app.worker.tasks import process_recipe_run, process_run
 
 router = APIRouter(prefix="/api/runs", tags=["실행"])
 
@@ -83,7 +83,9 @@ def approve_run(
     record(db, user_id, "run_approved", "run", run.id,
            {"plan": summarize(run.plan_summary)}, request)
 
-    get_queue().enqueue(process_run, run.id, True)
+    # 레시피 실행이면 계획을 새로 세우지 않고 저장된 단계를 그대로 돌립니다.
+    task = process_recipe_run if run.recipe_id else process_run
+    get_queue().enqueue(task, run.id, True)
     return run
 
 

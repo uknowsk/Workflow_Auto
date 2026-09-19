@@ -1,0 +1,10 @@
+mcp==1.12.0
+httpx==0.28.1
+uvicorn[standard]==0.34.0
+openai==1.59.6
+# 엑셀·워드·PPT 양식 채우기
+openpyxl==3.1.5
+python-docx==1.2.0
+python-pptx==1.0.2
+# 세계 시계용 시간대 정보 (slim 이미지에는 없습니다)
+tzdata==2024.2
