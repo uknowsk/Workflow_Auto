@@ -8,6 +8,7 @@
 이 파일은 그대로 둬도 됩니다.
 """
 from fastapi import Depends, Header, HTTPException
+from sqlalchemy.orm import Session
 
 from app.auth.backend import is_configured_admin
 from app.auth.tokens import read_token
@@ -40,13 +41,32 @@ def is_admin_token(authorization: str = Header(default="")) -> bool:
     return False
 
 
-def is_admin(user_id: str) -> bool:
-    """환경변수 ADMIN_USER_IDS(사번) 또는 ADMIN_SSO_IDS(SSO 아이디)에 있으면 관리자입니다.
+def is_admin(user_id: str, db: Session | None = None) -> bool:
+    """이 사번이 관리자인지. 두 군데를 봅니다.
 
-    계정의 is_admin 플래그는 로그인 토큰에 담겨 오는데, 환경변수 쪽을
-    같이 보는 이유는 "DB가 비어 있어도 관리자가 들어갈 수 있게" 하기 위해서입니다.
+      1) 환경변수 ADMIN_USER_IDS(사번) / ADMIN_SSO_IDS(SSO 아이디)
+         - DB 가 비어 있어도 관리자가 들어올 수 있게 하는 장치입니다.
+      2) 계정의 is_admin 플래그 (.env 의 ADMIN_ID 로 만들어진 첫 관리자 포함)
+
+    2번을 같이 보는 이유: 관리자 계정으로 로그인했는데 환경변수에 사번이 없다고
+    부서 관리 같은 기능이 막히면 아무도 원인을 짐작하지 못합니다.
+    db 를 넘기면 그 세션을 쓰고, 없으면 잠깐 하나 열었다 닫습니다.
     """
-    return is_configured_admin(user_id)
+    if is_configured_admin(user_id):
+        return True
+    if not user_id:
+        return False
+
+    from app.db import SessionLocal  # 순환 import 를 피하려고 여기서 읽습니다
+    from app.models import User
+
+    session = db or SessionLocal()
+    try:
+        user = session.query(User).filter(User.user_id == user_id).first()
+        return bool(user and user.is_admin)
+    finally:
+        if db is None:
+            session.close()
 
 
 def require_admin(

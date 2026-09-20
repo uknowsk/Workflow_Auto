@@ -36,9 +36,9 @@ STATUS_LABEL = {
 }
 
 
-def _can_answer(voc: AppFeedback, user_id: str) -> bool:
+def _can_answer(db: Session, voc: AppFeedback, user_id: str) -> bool:
     """답변과 상태 변경은 앱을 올린 사람과 관리자만."""
-    return voc.owner_user_id == user_id or is_admin(user_id)
+    return voc.owner_user_id == user_id or is_admin(user_id, db)
 
 
 # ------------------------------ 앱에 의견 남기기 ------------------------------
@@ -175,7 +175,7 @@ def answer(
     voc = db.get(AppFeedback, voc_id)
     if voc is None:
         raise HTTPException(404, "의견을 찾을 수 없습니다.")
-    if not _can_answer(voc, user_id):
+    if not _can_answer(db, voc, user_id):
         raise HTTPException(403, "이 앱을 올린 사람만 답변할 수 있습니다.")
 
     changes = payload.model_dump(exclude_unset=True)
@@ -217,7 +217,7 @@ def delete_voc(
     voc = db.get(AppFeedback, voc_id)
     if voc is None:
         raise HTTPException(404, "의견을 찾을 수 없습니다.")
-    if voc.user_id != user_id and not is_admin(user_id):
+    if voc.user_id != user_id and not is_admin(user_id, db):
         raise HTTPException(403, "내가 쓴 의견만 지울 수 있습니다.")
     db.delete(voc)
     db.commit()

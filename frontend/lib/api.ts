@@ -73,7 +73,10 @@ export type App = {
   icon: string;
   endpoint: string;
   status: string;
-  visibility: "private" | "pending" | "approved";
+  visibility: "private" | "department" | "pending" | "approved";
+  /** 부서 공통 앱일 때 그 부서 코드와 이름 */
+  owner_dept_code: string;
+  owner_dept_name: string;
   requires_confirmation: boolean;
   runtime_location: "server" | "pc";
   source_type: "manual" | "github" | "zip";
@@ -91,7 +94,30 @@ export type Card = {
   app_ids: string[];
   recipe_id: string | null;
   pinned: boolean;
+  /** 값이 있으면 개인 카드가 아니라 그 부서의 공통 카드입니다 */
+  dept_code: string;
+  dept_name: string;
+  /** 이 사람이 카드를 고치거나 지울 수 있는지 (부서 공통 카드는 담당자만) */
+  editable: boolean;
 };
+
+export type DeptRole = "member" | "manager";
+export type Department = {
+  code: string;
+  name: string;
+  description: string;
+  is_active: boolean;
+  member_count: number;
+  app_count: number;
+  card_count: number;
+};
+export type MyDept = {
+  code: string;
+  name: string;
+  role: DeptRole;
+  can_manage: boolean;
+};
+export type DeptMember = { user_id: string; name: string; role: DeptRole };
 export type RecipeStep = {
   app_id: string;
   app_name: string;
@@ -286,6 +312,8 @@ export type Me = {
   is_admin: boolean;
   /** 개인 계정에 저장된 화면 테마 */
   theme: string;
+  /** 내가 묶여 있는 부서들 */
+  depts: MyDept[];
 };
 
 export const api = {
@@ -314,6 +342,36 @@ export const api = {
   approveApp: (id: string) => request<App>(`/api/apps/${id}/approve`, { method: "POST" }),
   rejectApp: (id: string) => request<App>(`/api/apps/${id}/reject`, { method: "POST" }),
   listPending: () => request<App[]>("/api/apps/pending"),
+
+  shareAppToDept: (id: string, dept_code: string) =>
+    request<App>(`/api/apps/${id}/share-dept`, {
+      method: "POST",
+      body: JSON.stringify({ dept_code }),
+    }),
+  unshareAppFromDept: (id: string) =>
+    request<App>(`/api/apps/${id}/unshare-dept`, { method: "POST" }),
+
+  // ── 부서 ─────────────────────────────────────────────────────────
+  listDepartments: () => request<Department[]>("/api/departments"),
+  myDepartments: () => request<MyDept[]>("/api/departments/mine"),
+  createDepartment: (body: { code: string; name: string; description?: string }) =>
+    request<Department>("/api/departments", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  deleteDepartment: (code: string) =>
+    request<void>(`/api/departments/${code}`, { method: "DELETE" }),
+  listDeptMembers: (code: string) =>
+    request<DeptMember[]>(`/api/departments/${code}/members`),
+  addDeptMember: (code: string, user_id: string, role: DeptRole = "member") =>
+    request<DeptMember>(`/api/departments/${code}/members`, {
+      method: "POST",
+      body: JSON.stringify({ user_id, role }),
+    }),
+  removeDeptMember: (code: string, user_id: string) =>
+    request<void>(`/api/departments/${code}/members/${user_id}`, {
+      method: "DELETE",
+    }),
 
   listCards: () => request<Card[]>("/api/cards"),
   createCard: (body: Record<string, unknown>) =>

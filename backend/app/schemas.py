@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.models import (
     AppStatus,
     AppVisibility,
+    DeptRole,
     VocKind,
     VocStatus,
     RunStatus,
@@ -16,6 +17,56 @@ from app.models import (
     ScheduleTrigger,
     SourceType,
 )
+
+
+# ------------------------------- 부서 -------------------------------
+class DepartmentIn(BaseModel):
+    code: str = Field(..., min_length=1, max_length=64, description="사내 부서코드. 예) SW1")
+    name: str = Field(..., min_length=1, description="화면에 보이는 이름. 예) SW개발팀")
+    description: str = ""
+    is_active: bool = True
+
+
+class DepartmentUpdateIn(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    is_active: bool | None = None
+
+
+class DepartmentOut(BaseModel):
+    code: str
+    name: str
+    description: str
+    is_active: bool
+    member_count: int = 0  # 이 부서에 묶인 사람 수
+    app_count: int = 0     # 부서 공통 앱 수
+    card_count: int = 0    # 부서 공통 카드 수
+
+
+class DeptMemberIn(BaseModel):
+    user_id: str = Field(..., description="사번")
+    role: DeptRole = Field(
+        DeptRole.member, description="member=쓰기만, manager=부서 공통 앱·카드 등록 가능"
+    )
+
+
+class DeptMemberOut(BaseModel):
+    user_id: str
+    name: str = ""
+    role: DeptRole
+
+
+class DeptPublishIn(BaseModel):
+    """내 앱을 부서 공통 앱으로 낼 때 보내는 값."""
+
+    dept_code: str = Field(..., description="어느 부서의 공통 앱으로 할지")
+
+
+class MyDeptOut(BaseModel):
+    code: str
+    name: str
+    role: DeptRole
+    can_manage: bool = False
 
 
 # ----------------------------- 앱스토어 -----------------------------
@@ -32,13 +83,17 @@ class AppRegisterIn(BaseModel):
         "", description="역할 태그. 같은 일을 하는 앱끼리 같은 값. 예) 사내규정검색"
     )
     owner: str = Field("", description="등록자 이름")
-    owner_dept: str = Field("", description="등록자 소속")
+    owner_dept: str = Field("", description="등록자 소속(글자)")
+    owner_dept_code: str = Field(
+        "", description="부서 공통 앱으로 낼 부서 코드. visibility=department 일 때 필수"
+    )
     owner_contact: str = Field("", description="연락처(메일/사내메신저). 고장 시 연락용")
     icon: str = "🧩"
     auth_headers: dict[str, str] = Field(default_factory=dict)
     visibility: AppVisibility = Field(
         AppVisibility.private,
-        description="private=나만 사용, pending=공식 등록 신청(관리자 승인 대기)",
+        description="private=나만 사용, department=부서 공통(부서원 전원), "
+        "pending=공식 등록 신청(관리자 승인 대기)",
     )
     requires_confirmation: bool = Field(
         False,
@@ -60,6 +115,7 @@ class AppUpdateIn(BaseModel):
     requires_confirmation: bool | None = None
     owner: str | None = None
     owner_dept: str | None = None
+    owner_dept_code: str | None = None
     owner_contact: str | None = None
     icon: str | None = None
     auth_headers: dict[str, str] | None = None
@@ -84,6 +140,8 @@ class AppOut(BaseModel):
     capability_tag: str
     owner: str
     owner_dept: str
+    owner_dept_code: str
+    owner_dept_name: str = ""  # 화면에 코드 대신 보여 줄 부서 이름
     owner_contact: str
     icon: str
     endpoint: str
@@ -114,11 +172,16 @@ class AgentCardIn(BaseModel):
     )
     position: int = 0
     pinned: bool = False
+    dept_code: str = Field(
+        "", description="값이 있으면 그 부서의 공통 카드. 비우면 내 개인 카드"
+    )
 
 
 class AgentCardOut(AgentCardIn):
     id: str
     user_id: str
+    dept_name: str = ""   # 부서 공통 카드일 때 화면에 보여 줄 부서 이름
+    editable: bool = True  # 이 사람이 이 카드를 고치거나 지울 수 있는지
 
     model_config = ConfigDict(from_attributes=True)
 
