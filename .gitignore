@@ -34,3 +34,6 @@ frontend/tsconfig.tsbuildinfo
 
 # 공식 앱이 만든 기록과 파일 (컨테이너 볼륨에 쌓입니다)
 official_apps/data/
+
+# 백업 파일 (서버에만 둡니다)
+backups/

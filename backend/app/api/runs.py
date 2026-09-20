@@ -20,6 +20,14 @@ from app.worker.tasks import process_recipe_run, process_run
 
 router = APIRouter(prefix="/api/runs", tags=["실행"])
 
+# 더 손댈 수 없는 상태들. 멈추기는 이 상태가 아닐 때만 됩니다.
+FINISHED = {
+    RunStatus.succeeded,
+    RunStatus.failed,
+    RunStatus.rejected,
+    RunStatus.canceled,
+}
+
 
 def _owned(db: Session, run_id: str, user_id: str) -> Run:
     run = db.get(Run, run_id)
@@ -105,6 +113,32 @@ def reject_run(
     db.commit()
     db.refresh(run)
     record(db, user_id, "run_rejected", "run", run.id, {}, request)
+    return run
+
+
+@router.post("/{run_id}/cancel", response_model=RunOut, summary="실행 멈추기")
+def cancel_run(
+    run_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    user_id: str = Depends(current_user),
+) -> Run:
+    """돌아가는 작업을 멈춥니다.
+
+    이미 시작한 앱 호출 하나는 끝까지 갑니다(반쯤 한 일을 늘리지 않으려고).
+    그다음 앱으로는 넘어가지 않고 거기서 멈춥니다. 큐에서 차례를 기다리는
+    중이었다면 시작조차 하지 않습니다.
+    """
+    run = _owned(db, run_id, user_id)
+    if run.status in FINISHED:
+        raise HTTPException(409, "이미 끝난 작업입니다.")
+
+    run.status = RunStatus.canceled
+    run.finished_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(run)
+
+    record(db, user_id, "run_canceled", "run", run.id, {}, request)
     return run
 
 

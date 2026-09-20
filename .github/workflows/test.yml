@@ -1,0 +1,69 @@
+# 올릴 때마다 테스트를 자동으로 돌립니다.
+# 빨간 X 가 뜨면 그 커밋에서 뭔가 깨진 것이고, 초록 체크면 통과입니다.
+#
+# 사내망에는 GitHub Actions 가 없습니다. 회사에서는 같은 명령을 손으로 돌리세요.
+#   cd backend       && pip install -r requirements.txt -r requirements-dev.txt && pytest
+#   cd official_apps && pip install -r requirements.txt -r requirements-dev.txt && pytest
+#   cd frontend      && npm ci && npm run build
+name: 테스트
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+# 같은 브랜치에 연달아 올리면 앞의 실행은 멈춥니다(기다리는 시간을 줄이려고).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: 백엔드 테스트
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"   # backend/Dockerfile 과 같은 버전
+          cache: pip
+      - name: 설치
+        working-directory: backend
+        run: pip install -r requirements.txt -r requirements-dev.txt
+      - name: pytest
+        working-directory: backend
+        run: pytest -q
+
+  official_apps:
+    name: 공식 앱 테스트
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: 설치
+        working-directory: official_apps
+        run: pip install -r requirements.txt -r requirements-dev.txt
+      - name: pytest
+        working-directory: official_apps
+        run: pytest -q
+
+  frontend:
+    name: 화면 빌드
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: 설치
+        working-directory: frontend
+        run: npm ci
+      # 빌드가 되는지만 봅니다. 타입 오류나 import 실수는 여기서 걸립니다.
+      - name: 빌드
+        working-directory: frontend
+        run: npm run build

@@ -16,6 +16,7 @@ import asyncio
 import logging
 from datetime import datetime, timezone
 
+from app import quota
 from app.db import SessionLocal
 from app.models import (
     FormTemplate,
@@ -37,11 +38,48 @@ def _finish(db, run: Run, status: RunStatus) -> None:
     db.commit()
 
 
+def _canceled(run_id: str) -> bool:
+    """사용자가 '멈춤'을 눌렀나?
+
+    일꾼이 들고 있는 세션은 시작할 때 읽은 값을 그대로 쓰고 있을 수 있어서,
+    **새 세션으로 다시 읽습니다.** 그래야 화면에서 방금 누른 것이 보입니다.
+    """
+    db = SessionLocal()
+    try:
+        status = db.query(Run.status).filter(Run.id == run_id).scalar()
+        return status == RunStatus.canceled
+    except Exception:
+        # 확인에 실패했다고 하던 일을 멈추지는 않습니다.
+        return False
+    finally:
+        db.close()
+
+
+def _start_guard(db, run: Run) -> str:
+    """시작 전에 막아야 할 이유가 있으면 그 말을, 없으면 빈 글자를 돌려줍니다."""
+    if run.status == RunStatus.canceled:
+        # 큐에서 기다리는 동안 사용자가 멈춘 경우입니다.
+        return "취소됨"
+    blocked = quota.check(db, run.user_id)
+    if blocked:
+        quota.notify_admins_once(db, run.user_id)
+        return blocked
+    return ""
+
+
 def process_run(run_id: str, approved: bool = False) -> None:
     db = SessionLocal()
     try:
         run = db.get(Run, run_id)
         if run is None:
+            return
+
+        stop_reason = _start_guard(db, run)
+        if stop_reason == "취소됨":
+            return
+        if stop_reason:
+            run.error = stop_reason
+            _finish(db, run, RunStatus.failed)
             return
 
         run.started_at = run.started_at or datetime.now(timezone.utc)
@@ -95,11 +133,17 @@ def process_run(run_id: str, approved: bool = False) -> None:
                     run_id=run.id,
                     form_text=form_text,
                     on_step=save_steps,
+                    should_stop=lambda: _canceled(run.id),
                 )
             )
             run.steps = result.steps
-            run.result_text = result.result_text
-            run.status = RunStatus.succeeded
+            if _canceled(run.id):
+                # 사용자가 멈춘 것입니다. 실패로 적으면 뭐가 고장난 줄 압니다.
+                run.status = RunStatus.canceled
+                run.result_text = ""
+            else:
+                run.result_text = result.result_text
+                run.status = RunStatus.succeeded
         except Exception as exc:
             run.error = f"{type(exc).__name__}: {exc}"
             run.status = RunStatus.failed
@@ -121,6 +165,14 @@ def process_recipe_run(run_id: str, approved: bool = False) -> None:
     try:
         run = db.get(Run, run_id)
         if run is None:
+            return
+
+        stop_reason = _start_guard(db, run)
+        if stop_reason == "취소됨":
+            return
+        if stop_reason:
+            run.error = stop_reason
+            _finish(db, run, RunStatus.failed)
             return
 
         target = db.get(Recipe, run.recipe_id) if run.recipe_id else None
@@ -166,15 +218,20 @@ def process_recipe_run(run_id: str, approved: bool = False) -> None:
                     user_id=run.user_id,
                     run_id=run.id,
                     on_step=save_steps,
+                    should_stop=lambda: _canceled(run.id),
                 )
             )
             run.steps = result.steps
-            run.result_text = result.result_text
-            # 중간에 멈췄으면 실패로 봅니다(화면에서 빨갛게 보이도록).
-            failed = any(step.get("error") for step in result.steps)
-            run.status = RunStatus.failed if failed else RunStatus.succeeded
-            if failed:
-                run.error = result.result_text
+            if _canceled(run.id):
+                run.status = RunStatus.canceled
+                run.result_text = ""
+            else:
+                run.result_text = result.result_text
+                # 중간에 멈췄으면 실패로 봅니다(화면에서 빨갛게 보이도록).
+                failed = any(step.get("error") for step in result.steps)
+                run.status = RunStatus.failed if failed else RunStatus.succeeded
+                if failed:
+                    run.error = result.result_text
         except Exception as exc:
             run.error = f"{type(exc).__name__}: {exc}"
             run.status = RunStatus.failed
