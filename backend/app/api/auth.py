@@ -100,6 +100,29 @@ def login(payload: LoginIn, request: Request, db: Session = Depends(get_db)) -> 
     )
 
 
+@router.post("/refresh", response_model=LoginOut, summary="출입증 연장")
+def refresh(db: Session = Depends(get_db), user_id: str = Depends(current_user)) -> LoginOut:
+    """일하는 도중에 튕기지 않게, 쓰고 있는 동안 출입증을 새로 받아 갑니다.
+
+    출입증 자체는 2시간짜리입니다. 화면을 닫아 두면 2시간 뒤에 죽고,
+    계속 쓰고 있으면 여기서 이어집니다. **연장할 때마다 계정을 다시 봅니다** -
+    그래서 퇴사자를 끄면 늦어도 2시간 안에 실제로 끊깁니다.
+    """
+    user = db.query(User).filter(User.user_id == user_id).first()
+    if user is None:
+        # 개발 모드(헤더 로그인)에는 연장할 출입증이 없습니다.
+        raise HTTPException(404, "계정을 찾을 수 없습니다.")
+    if not user.is_active:
+        raise HTTPException(401, "사용이 중지된 계정입니다. 관리자에게 문의하세요.")
+
+    return LoginOut(
+        token=create_token(user.user_id, user.is_admin, settings.token_ttl_seconds),
+        user_id=user.user_id,
+        name=user.name,
+        is_admin=user.is_admin,
+    )
+
+
 @router.get("/me", response_model=MeOut, summary="내 정보")
 def me(db: Session = Depends(get_db), user_id: str = Depends(current_user)) -> MeOut:
     user = db.query(User).filter(User.user_id == user_id).first()

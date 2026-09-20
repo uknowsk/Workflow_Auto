@@ -40,7 +40,10 @@ class Settings(BaseSettings):
     # --- 로그인 ---
     # 토큰 서명에 쓰는 비밀값. 회사에서는 반드시 긴 임의 문자열로 바꾸세요.
     secret_key: str = "change-me-in-production"
-    token_ttl_seconds: int = 60 * 60 * 12  # 12시간
+    # 출입증 유효시간. 짧을수록 안전합니다(로그아웃하거나 퇴사자 계정을 꺼도
+    # 이미 받아 간 출입증은 이 시간만큼 살아 있습니다). 대신 일하는 도중에
+    # 튕기면 안 되므로, 쓰고 있는 동안에는 /api/auth/refresh 로 연장됩니다.
+    token_ttl_seconds: int = 60 * 60 * 2  # 2시간
     auth_backend: str = "password"  # password | sso (sso 는 아직 자리만)
     # 개발 편의: X-User-Id 헤더만으로 로그인한 척할 수 있게 합니다.
     # 회사 배포에서는 반드시 false 로 두세요.

@@ -302,3 +302,42 @@ def test_한도를_넘으면_막고_관리자에게_한_번만_알립니다():
     finally:
         settings_store.set_value(db, "llm_monthly_token_limit", 0)
         db.close()
+
+
+# ── 출입증 유효시간 ───────────────────────────────────────────────────────────
+
+
+def test_출입증은_2시간짜리입니다():
+    from app.config import get_settings
+
+    assert get_settings().token_ttl_seconds == 60 * 60 * 2
+
+
+def test_쓰고_있으면_출입증이_연장됩니다(client):
+    _make_user(client, "E5001")
+    토큰 = client.post(
+        "/api/auth/login", json={"user_id": "E5001", "password": "처음비번"}
+    ).json()["token"]
+
+    r = client.post("/api/auth/refresh", headers={"Authorization": f"Bearer {토큰}"})
+    assert r.status_code == 200
+    새_토큰 = r.json()["token"]
+
+    # 새 출입증으로도 들어가져야 합니다.
+    assert client.get(
+        "/api/auth/me", headers={"Authorization": f"Bearer {새_토큰}"}
+    ).status_code == 200
+
+
+def test_꺼진_계정은_연장되지_않습니다(client):
+    _make_user(client, "E5002")
+    토큰 = client.post(
+        "/api/auth/login", json={"user_id": "E5002", "password": "처음비번"}
+    ).json()["token"]
+
+    client.patch("/api/auth/users/E5002", headers=ADMIN, json={"is_active": False})
+
+    # 이미 받아 간 출입증은 만료 전까지 살아 있지만, 더 늘려 주지는 않습니다.
+    # 그래서 퇴사 처리는 늦어도 유효시간 안에 실제로 끊깁니다.
+    r = client.post("/api/auth/refresh", headers={"Authorization": f"Bearer {토큰}"})
+    assert r.status_code == 401
