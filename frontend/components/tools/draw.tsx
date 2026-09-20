@@ -63,6 +63,9 @@ const COLORS = [
 
 const WIDTHS = [2, 4, 8, 16];
 
+/** 마우스 자리 동그라미의 최소 지름(px). 이보다 작으면 눈에 안 띕니다. */
+const RING_MIN = 14;
+
 /** 도형 하나를 캔버스에 그립니다. */
 function paint(
   ctx: CanvasRenderingContext2D,
@@ -174,6 +177,9 @@ export default function DrawTool() {
   const draftRef = useRef<Shape | null>(null);
   const textInputRef = useRef<HTMLInputElement | null>(null);
   const drawingRef = useRef(false);
+  const cursorRef = useRef<HTMLDivElement | null>(null);
+  // 마우스가 캔버스 안 어디에 있는지(화면 px). 캔버스 밖이면 null.
+  const cursorPosRef = useRef<Point | null>(null);
 
   const [shapes, setShapes] = useState<Shape[]>([]);
   const [redo, setRedo] = useState<Shape[]>([]);
@@ -228,12 +234,64 @@ export default function DrawTool() {
     };
   };
 
+  /**
+   * 마우스 자리를 알려 주는 동그라미를 지금 위치·굵기에 맞춥니다.
+   *
+   * 조준선(CSS cursor)만으로 충분할 것 같지만, 원격 화면이나 일부 사내 PC 는
+   * 마우스 모양을 제 마음대로 그려서 흰 바탕에 흰 포인터가 되기도 합니다.
+   * 이 동그라미는 브라우저가 아니라 화면 안에 우리가 직접 그리는 것이라
+   * 그런 환경에서도 반드시 보입니다. 그래서 모든 도구에서 띄웁니다.
+   *
+   * 마우스를 움직일 때마다 React 를 거치면 화면 전체가 다시 계산되므로,
+   * 이 동그라미만 직접(ref) 손댑니다.
+   */
+  const syncCursor = useCallback(() => {
+    const ring = cursorRef.current;
+    const canvas = canvasRef.current;
+    const at = cursorPosRef.current;
+    if (!ring || !canvas) return;
+    if (!at) {
+      ring.style.display = "none";
+      return;
+    }
+    const box = canvas.getBoundingClientRect();
+    // 펜·지우개는 실제로 칠해지는 넓이를 보여 줍니다. 캔버스는 1600 폭으로 그리고
+    // 화면에서는 줄여 보여 주므로 굵기도 같은 비율로 줄입니다. 그래도 눈에 띄게
+    // 최소 크기를 두고, 굵기와 상관없는 도구는 그 최소 크기로만 띄웁니다.
+    const brush = tool === "pen" || tool === "eraser" ? width * (box.width / W) : 0;
+    const size = Math.max(RING_MIN, brush);
+    ring.style.display = "block";
+    ring.style.width = `${size}px`;
+    ring.style.height = `${size}px`;
+    ring.style.transform = `translate(${at.x}px, ${at.y}px) translate(-50%, -50%)`;
+  }, [tool, width]);
+
+  // 마우스를 안 움직여도 도구·굵기를 바꾸면 동그라미가 따라오게 합니다.
+  useEffect(() => {
+    syncCursor();
+  }, [syncCursor]);
+
+  const trackCursor = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    const box = event.currentTarget.getBoundingClientRect();
+    cursorPosRef.current = {
+      x: event.clientX - box.left,
+      y: event.clientY - box.top,
+    };
+    syncCursor();
+  };
+
+  const leaveCursor = () => {
+    cursorPosRef.current = null;
+    syncCursor();
+  };
+
   const commit = (shape: Shape) => {
     setShapes((prev) => [...prev, shape]);
     setRedo([]);
   };
 
   const onPointerDown = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    trackCursor(event);
     const at = toCanvas(event);
     if (tool === "text") {
       setTextAt(at);
@@ -250,6 +308,7 @@ export default function DrawTool() {
   };
 
   const onPointerMove = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    trackCursor(event);
     if (!drawingRef.current || !draftRef.current) return;
     const at = toCanvas(event);
     const draft = draftRef.current;
@@ -266,7 +325,9 @@ export default function DrawTool() {
     render();
   };
 
-  const onPointerUp = () => {
+  const onPointerUp = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    // 손가락은 떼면 화면에서 사라지므로 동그라미도 같이 치웁니다.
+    if (event.pointerType === "touch") leaveCursor();
     if (!drawingRef.current) return;
     drawingRef.current = false;
     const draft = draftRef.current;
@@ -492,7 +553,10 @@ export default function DrawTool() {
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
           onPointerCancel={onPointerUp}
+          onPointerEnter={trackCursor}
+          onPointerLeave={leaveCursor}
         />
+        <div className="tool-draw__cursor" ref={cursorRef} aria-hidden />
         {textAt && (
           <div className="tool-draw__text" style={textStyle}>
             <input
