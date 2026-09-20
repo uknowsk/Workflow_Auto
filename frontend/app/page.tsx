@@ -39,6 +39,7 @@ const STATUS_LABEL: Record<Run["status"], string> = {
   succeeded: "완료",
   failed: "실패",
   rejected: "취소함",
+  canceled: "멈춤",
 };
 
 const STATUS_TONE: Record<Run["status"], Tone> = {
@@ -49,7 +50,11 @@ const STATUS_TONE: Record<Run["status"], Tone> = {
   succeeded: "ok",
   failed: "crit",
   rejected: "neutral",
+  canceled: "neutral",
 };
+
+// 아직 끝나지 않아 '멈추기'를 누를 수 있는 상태들.
+const RUNNING: Run["status"][] = ["queued", "planning", "running"];
 
 export default function Home() {
   const [cards, setCards] = useState<CardType[]>([]);
@@ -82,7 +87,7 @@ export default function Home() {
   // 실행은 큐에 들어가므로, 끝나거나 확인이 필요할 때까지 2초마다 상태를 봅니다.
   useEffect(() => {
     if (!run) return;
-    const done = ["succeeded", "failed", "rejected", "awaiting_approval"];
+    const done = ["succeeded", "failed", "rejected", "canceled", "awaiting_approval"];
     if (done.includes(run.status)) return;
     const timer = setTimeout(
       () => api.getRun(run.id).then(setRun).catch(() => undefined),
@@ -223,7 +228,25 @@ export default function Home() {
         <Section>
           <SectionHead
             label="실행"
-            action={<Badge tone={STATUS_TONE[run.status]}>{STATUS_LABEL[run.status]}</Badge>}
+            action={
+              <Row>
+                {RUNNING.includes(run.status) && (
+                  <Button
+                    variant="ghost"
+                    small
+                    onClick={() =>
+                      api
+                        .cancelRun(run.id)
+                        .then(setRun)
+                        .catch((e) => setError(e instanceof Error ? e.message : String(e)))
+                    }
+                  >
+                    멈추기
+                  </Button>
+                )}
+                <Badge tone={STATUS_TONE[run.status]}>{STATUS_LABEL[run.status]}</Badge>
+              </Row>
+            }
           />
           <Card>
             {run.status === "awaiting_approval" && (
@@ -269,6 +292,9 @@ export default function Home() {
                   </li>
                 ))}
               </ul>
+            )}
+            {run.status === "canceled" && (
+              <Muted>멈췄습니다. 이미 끝난 단계까지의 결과만 위에 남아 있습니다.</Muted>
             )}
             {run.result_text && <Lines boxed>{run.result_text}</Lines>}
             {run.error && (

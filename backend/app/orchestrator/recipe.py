@@ -139,11 +139,15 @@ async def execute(
     user_id: str = "",
     run_id: str = "",
     on_step: Callable[[list[dict]], None] | None = None,
+    should_stop: Callable[[], bool] | None = None,
 ) -> OrchestrationResult:
     """정해진 단계를 위에서부터 차례로 실행합니다.
 
     한 단계가 실패하면 거기서 멈춥니다. 앞 단계 결과를 받아 쓰는 구조라
     그냥 이어 가면 엉뚱한 내용으로 메일이 나갈 수 있기 때문입니다.
+
+    should_stop 은 "사용자가 멈춤을 눌렀나?"를 묻는 함수입니다. 다음 단계로
+    넘어가기 전에 물어봅니다(같은 이유로, 이미 시작한 단계는 끝까지 갑니다).
     """
     context = base_context(user_id)
     context.update({k: str(v) for k, v in (variables or {}).items()})
@@ -152,6 +156,11 @@ async def execute(
     outputs: list[str] = []
 
     for index, raw in enumerate(steps or [], start=1):
+        if should_stop and should_stop():
+            return OrchestrationResult(
+                result_text="", steps=[r.as_dict() for r in records]
+            )
+
         app = _load_app(db, raw.get("app_id", ""), user_id)
         tool_name = raw.get("tool", "")
         arguments = fill(raw.get("arguments") or {}, context)

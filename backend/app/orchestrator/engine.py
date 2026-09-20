@@ -347,8 +347,14 @@ async def run_request(
     run_id: str = "",
     form_text: str = "",
     on_step: Callable[[list[dict]], None] | None = None,
+    should_stop: Callable[[], bool] | None = None,
 ) -> OrchestrationResult:
-    """자연어 요청 1건을 끝까지 처리합니다."""
+    """자연어 요청 1건을 끝까지 처리합니다.
+
+    should_stop 은 "사용자가 멈춤을 눌렀나?"를 묻는 함수입니다. 앱을 하나 부를
+    때마다 물어봅니다. 이미 시작한 앱 호출을 중간에 끊지는 못하지만, 그다음
+    호출로 넘어가지는 않습니다(반쯤 한 일을 더 늘리지 않으려는 것입니다).
+    """
     bindings = load_bindings(db, app_ids, user_id, request_text)
     by_name = {b.function_name: b for b in bindings}
     tools = to_openai_tools(bindings)
@@ -376,6 +382,11 @@ async def run_request(
     steps: list[Step] = []
 
     for _ in range(settings.llm_max_steps):
+        if should_stop and should_stop():
+            return OrchestrationResult(
+                result_text="", steps=[s.as_dict() for s in steps]
+            )
+
         reply = llm.chat(messages, tools=tools)
         _log_usage(db, reply, user_id, run_id)
 
@@ -387,6 +398,11 @@ async def run_request(
         messages.append(llm.assistant_call_message(reply))
 
         for call in reply["tool_calls"]:
+            if should_stop and should_stop():
+                return OrchestrationResult(
+                    result_text="", steps=[s.as_dict() for s in steps]
+                )
+
             binding = by_name.get(call["name"])
             if binding is None:
                 output, is_error = f"'{call['name']}' 이라는 기능은 없습니다.", True

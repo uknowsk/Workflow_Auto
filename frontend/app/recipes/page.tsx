@@ -31,6 +31,7 @@ const RUN_LABEL: Record<Run["status"], string> = {
   succeeded: "완료",
   failed: "실패",
   rejected: "취소함",
+  canceled: "멈춤",
 };
 
 const RUN_TONE: Record<Run["status"], Tone> = {
@@ -41,6 +42,7 @@ const RUN_TONE: Record<Run["status"], Tone> = {
   succeeded: "ok",
   failed: "crit",
   rejected: "neutral",
+  canceled: "neutral",
 };
 
 export default function Recipes() {

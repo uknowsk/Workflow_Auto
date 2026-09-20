@@ -199,7 +199,8 @@ export type Run = {
     | "running"
     | "succeeded"
     | "failed"
-    | "rejected";
+    | "rejected"
+    | "canceled";
   plan: PlanStep[];
   plan_summary: string;
   needs_approval: boolean;
@@ -233,6 +234,46 @@ export type Usage = {
   mine: { total_tokens: number; calls: number };
   all_users?: { total_tokens: number; calls: number };
   by_user?: { user_id: string; total_tokens: number; calls: number }[];
+};
+export type AdminSetting = {
+  key: string;
+  label: string;
+  hint: string;
+  value: number;
+  default: number;
+};
+export type AdminErrors = {
+  days: number;
+  runs: { at: string; user_id: string; request: string; error: string; run_id: string }[];
+  app_calls: {
+    at: string;
+    app: string;
+    tool: string;
+    user_id: string;
+    error: string;
+    app_id: string;
+  }[];
+  apps_down: {
+    app: string;
+    app_id: string;
+    endpoint: string;
+    owner: string;
+    contact: string;
+    failures: number;
+    error: string;
+    last_seen: string;
+  }[];
+};
+export type Account = {
+  user_id: string;
+  name: string;
+  dept: string;
+  contact: string;
+  is_admin: boolean;
+  is_active: boolean;
+  created_at: string | null;
+  last_login_at: string | null;
+  dept_codes: string[];
 };
 export type Notice = {
   id: string;
@@ -388,6 +429,7 @@ export const api = {
     request<Run>("/api/runs", { method: "POST", body: JSON.stringify(body) }),
   getRun: (id: string) => request<Run>(`/api/runs/${id}`),
   approveRun: (id: string) => request<Run>(`/api/runs/${id}/approve`, { method: "POST" }),
+  cancelRun: (id: string) => request<Run>(`/api/runs/${id}/cancel`, { method: "POST" }),
   rejectRun: (id: string) => request<Run>(`/api/runs/${id}/reject`, { method: "POST" }),
 
   listRecipes: () => request<Recipe[]>("/api/recipes"),
@@ -426,6 +468,32 @@ export const api = {
   usage: () => request<Usage>("/api/stats/usage"),
   notifications: () => request<Notice[]>("/api/notifications"),
   audit: () => request<Record<string, unknown>[]>("/api/audit?limit=100"),
+
+  // ── 관리자: 최근 오류 · 운영 설정 · 계정 ─────────────────────────
+  adminErrors: (days = 7) => request<AdminErrors>(`/api/admin/errors?days=${days}`),
+  adminSettings: () => request<AdminSetting[]>("/api/admin/settings"),
+  saveAdminSettings: (values: Record<string, number>) =>
+    request<AdminSetting[]>("/api/admin/settings", {
+      method: "PUT",
+      body: JSON.stringify(values),
+    }),
+  cleanupNow: () =>
+    request<{ removed: Record<string, number> }>("/api/admin/cleanup", {
+      method: "POST",
+    }),
+
+  listAccounts: (q = "") =>
+    request<Account[]>(`/api/auth/users?q=${encodeURIComponent(q)}`),
+  updateAccount: (user_id: string, body: Record<string, unknown>) =>
+    request<Account>(`/api/auth/users/${user_id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+  resetPassword: (user_id: string, password: string) =>
+    request<Account>(`/api/auth/users/${user_id}/password`, {
+      method: "POST",
+      body: JSON.stringify({ password }),
+    }),
 
   // ── 도구 서랍 (메모·그림) ────────────────────────────────────────
   listNotes: () => request<Note[]>("/api/tools/notes"),

@@ -7,6 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import (
+    admin,
     apps,
     audit,
     auth,
@@ -26,6 +27,7 @@ from app.api import (
     versions,
     voc,
 )
+from app.cleanup import run_forever as cleanup_forever
 from app.config import check_production_safety, get_settings
 from app.db import SessionLocal, create_all
 from app.health_monitor import run_forever
@@ -59,10 +61,14 @@ async def lifespan(_: FastAPI):
 
     # 앱이 살아 있는지 주기적으로 확인하는 일꾼을 백그라운드로 띄웁니다.
     monitor = asyncio.create_task(run_forever())
+    # 오래된 실행 기록·감사 기록을 하루에 한 번 지우는 일꾼.
+    # 보관 기간은 관리자 화면에서 바꿉니다(기본 이력 90일, 감사 1년).
+    sweeper = asyncio.create_task(cleanup_forever())
     try:
         yield
     finally:
         monitor.cancel()
+        sweeper.cancel()
 
 
 app = FastAPI(
@@ -102,3 +108,4 @@ app.include_router(tools.router)
 app.include_router(audit.router)
 app.include_router(voc.router)
 app.include_router(versions.router)
+app.include_router(admin.router)
