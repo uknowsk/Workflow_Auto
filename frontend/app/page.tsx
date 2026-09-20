@@ -1,7 +1,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { api, App, Card as CardType, Form, Recipe, Run, getSession } from "@/lib/api";
+import {
+  api,
+  App,
+  Card as CardType,
+  Form,
+  MyDept,
+  Recipe,
+  Run,
+  getSession,
+} from "@/lib/api";
 import {
   Alert,
   Badge,
@@ -51,6 +60,7 @@ export default function Home() {
   const [formId, setFormId] = useState("");
   const [run, setRun] = useState<Run | null>(null);
   const [recipes, setRecipes] = useState<Recipe[]>([]);
+  const [myDepts, setMyDepts] = useState<MyDept[]>([]);
   const [error, setError] = useState("");
 
   const reload = () => {
@@ -58,6 +68,7 @@ export default function Home() {
     api.listApps().then(setApps).catch(() => undefined);
     api.listForms().then(setForms).catch(() => undefined);
     api.listRecipes().then(setRecipes).catch(() => undefined);
+    api.myDepartments().then(setMyDepts).catch(() => undefined);
   };
 
   useEffect(() => {
@@ -111,19 +122,33 @@ export default function Home() {
     }
   };
 
-  const addCard = async () => {
-    const title = prompt("카드 이름을 적어 주세요. 예) 주간보고 자동작성");
+  // dept_code 를 주면 부서 공통 카드가 됩니다(부서 담당자만 만들 수 있습니다).
+  const addCard = async (deptCode = "") => {
+    const title = prompt(
+      deptCode
+        ? "부서원 모두에게 보일 카드 이름을 적어 주세요. 예) 주간보고 자동작성"
+        : "카드 이름을 적어 주세요. 예) 주간보고 자동작성"
+    );
     if (!title) return;
     const template = prompt("이 카드를 누르면 채워질 요청문을 적어 주세요.") || "";
-    await api.createCard({
-      title,
-      prompt_template: template,
-      app_ids: [],
-      icon: "⭐",
-      pinned: true,
-    });
-    reload();
+    try {
+      await api.createCard({
+        title,
+        prompt_template: template,
+        app_ids: [],
+        icon: deptCode ? "🏢" : "⭐",
+        pinned: true,
+        dept_code: deptCode,
+      });
+      reload();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
   };
+
+  const deptCards = cards.filter((card) => card.dept_code);
+  const myCards = cards.filter((card) => !card.dept_code);
+  const manageable = myDepts.filter((d) => d.can_manage);
 
   return (
     <>
@@ -265,23 +290,81 @@ export default function Home() {
         </Section>
       )}
 
+      {deptCards.length > 0 && (
+        <Section>
+          <SectionHead
+            label="부서 공통 카드"
+            action={<Muted>부서에 묶인 사람 모두에게 같이 보입니다</Muted>}
+          />
+          <Grid>
+            {deptCards.map((card) => (
+              <Card key={card.id} hoverable className="ui-card--stack">
+                <Row between nowrap>
+                  <Row nowrap>
+                    <IconTile>{card.icon || "🏢"}</IconTile>
+                    <b>{card.title}</b>
+                  </Row>
+                  <Badge tone="accent">{card.dept_name || card.dept_code}</Badge>
+                </Row>
+                <Muted>{card.prompt_template || "요청문 없음"}</Muted>
+                <Row style={{ marginTop: "var(--space-2)" }}>
+                  <Button
+                    variant="ghost"
+                    small
+                    onClick={() => {
+                      setText(card.prompt_template);
+                      setCardId(card.id);
+                      window.scrollTo({ top: 0, behavior: "smooth" });
+                    }}
+                  >
+                    이 카드로 요청
+                  </Button>
+                  {card.editable && (
+                    <Button
+                      variant="ghost"
+                      small
+                      aria-label={`${card.title} 부서 공통 카드 삭제`}
+                      onClick={() => api.deleteCard(card.id).then(reload)}
+                    >
+                      삭제
+                    </Button>
+                  )}
+                </Row>
+              </Card>
+            ))}
+          </Grid>
+        </Section>
+      )}
+
       <Section>
         <SectionHead
           label="내 에이전트 카드"
           action={
-            <button type="button" className="ui-chip" onClick={addCard}>
-              + 카드 추가
-            </button>
+            <Row nowrap>
+              {manageable.map((dept) => (
+                <button
+                  key={dept.code}
+                  type="button"
+                  className="ui-chip"
+                  onClick={() => addCard(dept.code)}
+                >
+                  + {dept.name} 공통 카드
+                </button>
+              ))}
+              <button type="button" className="ui-chip" onClick={() => addCard()}>
+                + 카드 추가
+              </button>
+            </Row>
           }
         />
-        {cards.length === 0 ? (
+        {myCards.length === 0 ? (
           <Empty>
             자주 쓰는 요청을 카드로 저장해 두면 한 번에 불러옵니다. 오른쪽 위
             &ldquo;카드 추가&rdquo;를 눌러 보세요.
           </Empty>
         ) : (
           <Grid>
-            {cards.map((card) => (
+            {myCards.map((card) => (
               <Card key={card.id} hoverable className="ui-card--stack">
                 <Row between nowrap>
                   <Row nowrap>

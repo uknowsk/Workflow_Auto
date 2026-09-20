@@ -12,6 +12,7 @@ from app.api import (
     auth,
     cards,
     dashboard,
+    departments,
     forms,
     health,
     launchers,
@@ -82,6 +83,7 @@ app.include_router(auth.router)
 app.include_router(apps.router)
 app.include_router(packages.router)
 app.include_router(cards.router)
+app.include_router(departments.router)
 app.include_router(runs.router)
 app.include_router(recipes.router)
 app.include_router(schedules.router)

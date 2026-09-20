@@ -30,7 +30,8 @@ def get_db() -> Iterator[Session]:
 # 사내 정식 배포에서는 alembic 으로 관리하세요.
 _ADDED_COLUMNS: dict[str, dict[str, str]] = {
     "runs": {"recipe_id": "VARCHAR(36)", "schedule_id": "VARCHAR(36)", "variables": "JSON"},
-    "agent_cards": {"recipe_id": "VARCHAR(36)"},
+    "agent_cards": {"recipe_id": "VARCHAR(36)", "dept_code": "VARCHAR(64) DEFAULT ''"},
+    "apps": {"owner_dept_code": "VARCHAR(64) DEFAULT ''"},
     "users": {"theme": "VARCHAR(32) DEFAULT 'white'"},
 }
 
