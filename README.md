@@ -151,6 +151,7 @@ GitHub·ZIP 으로 올릴 때는 패키지 안에 `workflow_app.json` 을 넣어
 - 견본: `templates/mcp_adapter_http/` (웹앱용), `templates/mcp_adapter_cli/` (PC 설치형용)
 - 완성 예시: `example_app/` — 기존 앱을 한 줄도 안 고치고 붙인 사례
 - 규약 원문: [docs/WRAPPER_SPEC.md](docs/WRAPPER_SPEC.md)
+- 올린 뒤: 쓰는 사람들의 의견을 받고 새 버전을 올리는 법은 [docs/VOC.md](docs/VOC.md)
 
 ## 서버에서 도는 앱, 내 PC에서 도는 앱
 

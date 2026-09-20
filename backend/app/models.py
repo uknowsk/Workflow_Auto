@@ -14,6 +14,8 @@
   LlmUsage    : Gauss 토큰 사용량
   Recipe      : 한 번 잘 돌아간 앱 호출 흐름에 이름을 붙여 저장한 것(워크플로우)
   Schedule    : 시간이 되면 스스로 실행되는 예약
+  AppFeedback : 앱을 써 본 사람이 등록자에게 남긴 의견(VOC)
+  AppVersion  : 앱을 새 버전으로 올린 이력 (되돌리기용)
 """
 from __future__ import annotations
 
@@ -633,3 +635,102 @@ class Drawing(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_now, onupdate=_now
     )
+
+
+class VocKind(str, enum.Enum):
+    """의견의 종류. 고르는 값이 많으면 아무도 안 고르므로 셋만 둡니다."""
+
+    bug = "bug"            # 잘 안 돼요
+    idea = "idea"          # 이런 게 있으면 좋겠어요
+    question = "question"  # 사용법을 모르겠어요
+
+
+class VocStatus(str, enum.Enum):
+    """등록자가 옮겨 놓는 처리 상태."""
+
+    open = "open"                # 접수됨(아직 안 봤거나 검토 전)
+    in_progress = "in_progress"  # 고치는 중
+    done = "done"                # 처리 완료
+    wontfix = "wontfix"          # 안 고치기로 함(이유를 답변에 적습니다)
+
+
+class AppFeedback(Base):
+    """앱스토어 앱에 사용자가 남긴 의견(VOC) 한 건.
+
+    "누가 - 어떤 앱에 - 무엇을" 이 한 줄에 다 있어야 등록자가 바로 고칠 수
+    있습니다. 그래서 의견을 남긴 시점의 앱 버전(app_version)까지 같이 적어
+    둡니다. 고쳐 놓은 버전에 대한 옛날 제보를 붙잡고 있지 않기 위해서입니다.
+    """
+
+    __tablename__ = "app_feedback"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    app_id: Mapped[str] = mapped_column(String(36), index=True)
+    # 앱이 지워져도 의견 기록은 남도록 이름을 복사해 둡니다(감사 기록과 같은 이유).
+    app_name: Mapped[str] = mapped_column(String(128), default="")
+    # 받는 사람 = 앱을 올린 사람. 앱의 주인이 바뀌면 이 값도 같이 바꿔 줍니다.
+    owner_user_id: Mapped[str] = mapped_column(String(128), default="", index=True)
+
+    user_id: Mapped[str] = mapped_column(String(128), index=True)  # 의견 쓴 사람(사번)
+    user_name: Mapped[str] = mapped_column(String(128), default="")
+
+    kind: Mapped[VocKind] = mapped_column(
+        Enum(VocKind, native_enum=False), default=VocKind.bug, index=True
+    )
+    # 별점. 0 이면 "안 매김". 별점만으로는 뭘 고칠지 모르므로 어디까지나 덤입니다.
+    rating: Mapped[int] = mapped_column(Integer, default=0)
+    title: Mapped[str] = mapped_column(String(200), default="")
+    body: Mapped[str] = mapped_column(Text, default="")
+    # 의견을 남길 때 돌고 있던 앱 버전. 고친 뒤에 들어온 제보인지 구분합니다.
+    app_version: Mapped[str] = mapped_column(String(64), default="")
+    # 어떤 실행에서 겪은 일인지(있으면). 등록자가 그 실행 기록을 찾아볼 수 있습니다.
+    run_id: Mapped[str] = mapped_column(String(36), default="")
+
+    status: Mapped[VocStatus] = mapped_column(
+        Enum(VocStatus, native_enum=False), default=VocStatus.open, index=True
+    )
+    reply: Mapped[str] = mapped_column(Text, default="")  # 등록자 답변
+    replied_by: Mapped[str] = mapped_column(String(128), default="")
+    replied_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_now, onupdate=_now
+    )
+
+
+class AppVersion(Base):
+    """앱을 새 버전으로 올린 기록 한 줄.
+
+    업데이트는 바로 반영됩니다(매번 재승인을 받게 하면 아무도 업데이트를 안
+    합니다). 대신 여기에 이력이 남고, 공식 앱이면 관리자에게 알림이 가며,
+    문제가 있으면 이전 버전으로 되돌릴 수 있습니다.
+
+    GitHub/ZIP 으로 올린 앱은 버전마다 폴더를 따로 두기 때문에(packages.py)
+    package_path 만 다시 가리키면 진짜로 되돌아갑니다.
+    """
+
+    __tablename__ = "app_versions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    app_id: Mapped[str] = mapped_column(String(36), index=True)
+    version: Mapped[str] = mapped_column(String(64), default="")
+    note: Mapped[str] = mapped_column(Text, default="")  # 무엇이 바뀌었는지
+
+    # 이 버전이 쓰던 값들. 되돌리기는 이 값들을 앱에 다시 써 넣는 일입니다.
+    endpoint: Mapped[str] = mapped_column(String(512), default="")
+    source_type: Mapped[str] = mapped_column(String(16), default="manual")
+    source_url: Mapped[str] = mapped_column(String(512), default="")
+    source_ref: Mapped[str] = mapped_column(String(128), default="")  # 브랜치/태그
+    package_path: Mapped[str] = mapped_column(String(512), default="")
+    tool_count: Mapped[int] = mapped_column(Integer, default=0)
+
+    # 지금 돌고 있는 버전이면 True. 되돌리면 이 표시가 옮겨 갑니다.
+    is_current: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    # 되돌리기로 만들어진 줄이면, 어느 버전으로 되돌린 것인지.
+    rolled_back_from: Mapped[str] = mapped_column(String(36), default="")
+
+    created_by: Mapped[str] = mapped_column(String(128), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)

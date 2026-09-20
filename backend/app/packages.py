@@ -13,6 +13,7 @@ import logging
 import shutil
 import subprocess
 import zipfile
+from datetime import datetime, timezone
 from pathlib import Path
 
 from app.config import get_settings
@@ -32,6 +33,46 @@ def packages_root() -> Path:
     path = Path(settings.data_dir) / "packages"
     path.mkdir(parents=True, exist_ok=True)
     return path
+
+
+KEEP_VERSIONS = 5
+
+
+def new_version_dir(slug: str) -> Path:
+    """이번에 받은 소스를 넣을 새 폴더.
+
+    예전에는 앱 하나에 폴더 하나였고, 새로 올리면 옛 폴더를 지웠습니다.
+    그러면 업데이트가 잘못돼도 되돌릴 방법이 없어서, 버전마다 폴더를 따로
+    둡니다: packages/<앱>/20260920-071500. 앱의 package_path 가 그중 지금
+    쓰는 폴더를 가리키고, 되돌리기는 그 값을 옛 폴더로 바꾸는 일입니다.
+    """
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    parent = packages_root() / slug
+    target = parent / stamp
+    # 같은 초에 두 번 올리는 경우(테스트 등)까지 대비합니다.
+    suffix = 1
+    while target.exists():
+        suffix += 1
+        target = parent / f"{stamp}-{suffix}"
+    target.mkdir(parents=True)
+    return target
+
+
+def prune_versions(slug: str, keep: set[str] | None = None) -> None:
+    """오래된 버전 폴더를 지웁니다. 디스크가 무한하지 않으므로.
+
+    keep 에 든 경로(지금 쓰는 버전, 되돌릴 수 있게 남겨 둔 버전)는 몇 번째든
+    지우지 않습니다.
+    """
+    parent = packages_root() / slug
+    if not parent.is_dir():
+        return
+    kept = {str(Path(k).resolve()) for k in (keep or set())}
+    folders = sorted((p for p in parent.iterdir() if p.is_dir()), key=lambda p: p.name)
+    for folder in folders[:-KEEP_VERSIONS] if len(folders) > KEEP_VERSIONS else []:
+        if str(folder.resolve()) in kept:
+            continue
+        shutil.rmtree(folder, ignore_errors=True)
 
 
 def _safe_extract(zip_path: Path, target: Path) -> None:
@@ -71,11 +112,11 @@ def _find_manifest(root: Path) -> tuple[Path, dict]:
 
 
 def store_zip(slug: str, zip_path: Path) -> tuple[Path, dict]:
-    """업로드된 ZIP 을 풀어 보관하고 (앱 폴더, 매니페스트) 를 돌려줍니다."""
-    target = packages_root() / slug
-    if target.exists():
-        shutil.rmtree(target)
-    target.mkdir(parents=True)
+    """업로드된 ZIP 을 풀어 보관하고 (앱 폴더, 매니페스트) 를 돌려줍니다.
+
+    올릴 때마다 새 버전 폴더에 담습니다. 옛 버전은 남아 있어 되돌릴 수 있습니다.
+    """
+    target = new_version_dir(slug)
 
     try:
         _safe_extract(zip_path, target)
@@ -98,9 +139,9 @@ def store_github(slug: str, url: str, ref: str = "") -> tuple[Path, dict]:
     if not url.startswith(("https://", "http://", "git@")):
         raise PackageError("https:// 또는 git@ 로 시작하는 주소만 받습니다.")
 
-    target = packages_root() / slug
-    if target.exists():
-        shutil.rmtree(target)
+    target = new_version_dir(slug)
+    # git clone 은 빈 폴더가 아니면 거부하므로, 만들어 둔 폴더를 비워 줍니다.
+    target.rmdir()
 
     command = ["git", "clone", "--depth", "1"]
     if ref:

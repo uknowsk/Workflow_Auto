@@ -34,6 +34,7 @@ const GROUPS: { label: string; items: NavTabItem[] }[] = [
     label: "내 것",
     items: [
       { href: "/tasks", label: "할 일" },
+      { href: "/voc", label: "의견함" },
       { href: "/mail", label: "메일함" },
       { href: "/tools", label: "도구" },
     ],

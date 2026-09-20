@@ -259,6 +259,51 @@ export type DrawingSummary = {
 };
 export type DrawingFull = DrawingSummary & { image: string };
 
+// ── 앱 의견(VOC)과 앱 버전 ──────────────────────────────────────────
+export type VocKind = "bug" | "idea" | "question";
+export type VocStatus = "open" | "in_progress" | "done" | "wontfix";
+export type Voc = {
+  id: string;
+  app_id: string;
+  app_name: string;
+  owner_user_id: string;
+  user_id: string;
+  user_name: string;
+  kind: VocKind;
+  rating: number;
+  title: string;
+  body: string;
+  app_version: string;
+  run_id: string;
+  status: VocStatus;
+  reply: string;
+  replied_by: string;
+  replied_at: string | null;
+  created_at: string;
+};
+/** 앱스토어 목록에 «의견 3» 을 붙이려고 한 번에 세어 오는 값 */
+export type VocCount = {
+  total: number;
+  open: number;
+  rating: number;
+  rating_count: number;
+};
+export type AppVersion = {
+  id: string;
+  app_id: string;
+  version: string;
+  note: string;
+  endpoint: string;
+  source_type: string;
+  source_url: string;
+  source_ref: string;
+  tool_count: number;
+  is_current: boolean;
+  rolled_back_from: string;
+  created_by: string;
+  created_at: string;
+};
+
 export type Me = {
   user_id: string;
   name: string;
@@ -393,6 +438,41 @@ export const api = {
     }),
   deleteNote: (id: string) =>
     request<void>(`/api/tools/notes/${id}`, { method: "DELETE" }),
+
+  // ── 앱 의견(VOC) ────────────────────────────────────────────────
+  listAppVoc: (appId: string) => request<Voc[]>(`/api/apps/${appId}/voc`),
+  sendVoc: (
+    appId: string,
+    body: { kind: VocKind; title: string; body?: string; rating?: number; run_id?: string }
+  ) =>
+    request<Voc>(`/api/apps/${appId}/voc`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  vocInbox: (openOnly = false) =>
+    request<Voc[]>(`/api/voc/inbox?open_only=${openOnly}`),
+  vocSent: () => request<Voc[]>("/api/voc/sent"),
+  vocCounts: () => request<Record<string, VocCount>>("/api/voc/counts"),
+  answerVoc: (id: string, body: { status?: VocStatus; reply?: string }) =>
+    request<Voc>(`/api/voc/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  deleteVoc: (id: string) => request<void>(`/api/voc/${id}`, { method: "DELETE" }),
+
+  // ── 앱 업데이트 ─────────────────────────────────────────────────
+  listVersions: (appId: string) => request<AppVersion[]>(`/api/apps/${appId}/versions`),
+  updateEndpoint: (
+    appId: string,
+    body: { endpoint: string; version?: string; note?: string }
+  ) =>
+    request<App>(`/api/apps/${appId}/update/endpoint`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  updateFromGithub: (appId: string, form: FormData) =>
+    request<App>(`/api/apps/${appId}/update/from-github`, { method: "POST", body: form }),
+  updateFromZip: (appId: string, form: FormData) =>
+    request<App>(`/api/apps/${appId}/update/from-zip`, { method: "POST", body: form }),
+  rollbackVersion: (appId: string, versionId: string) =>
+    request<App>(`/api/apps/${appId}/versions/${versionId}/rollback`, { method: "POST" }),
 
   listDrawings: () => request<DrawingSummary[]>("/api/tools/drawings"),
   getDrawing: (id: string) => request<DrawingFull>(`/api/tools/drawings/${id}`),
