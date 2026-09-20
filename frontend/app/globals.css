@@ -1622,6 +1622,59 @@ body.no-dock {
   font-size: var(--text-md);
 }
 
+/* 도시 고르기: 입력창 아래로 후보를 펼칩니다 */
+.tool-clock__pick {
+  position: relative;
+}
+.tool-clock__pick .ui-input {
+  width: 100%;
+}
+.tool-clock__suggest {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  max-height: 260px;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-pop);
+}
+.tool-clock__suggest--empty {
+  padding: var(--space-3);
+}
+.tool-clock__option {
+  display: flex;
+  gap: var(--space-2);
+  align-items: baseline;
+  flex-wrap: wrap;
+  padding: 7px 9px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.tool-clock__option--on {
+  background: var(--accent-soft);
+}
+.tool-clock__option-name {
+  font-weight: 600;
+  color: var(--ink);
+}
+.tool-clock__option-sub {
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+.tool-clock__option-gap {
+  margin-left: auto;
+  font-size: var(--text-sm);
+  color: var(--muted);
+  font-family: var(--font-mono);
+}
+
 /* 날짜 계산 */
 .tool-date__result {
   display: flex;
