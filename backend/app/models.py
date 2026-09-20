@@ -5,6 +5,8 @@
   App         : 앱스토어에 등록된 개발자 앱 (MCP 서버 한 대)
   AppTool     : 그 앱이 제공하는 기능 하나 (MCP tool). 등록 시 자동으로 읽어옵니다.
   AgentCard   : 사용자가 "자주 쓰는 에이전트"로 만들어 둔 카드
+  Department  : 부서 하나. 부서 공통 앱/카드의 주인 자리입니다
+  DeptMember  : 어떤 사번이 어느 부서에 묶여 있는지 (부서원 명단)
   Run         : 사용자의 자연어 요청 1건과 그 처리 결과
   FormTemplate: 결과를 채워 넣을 양식(엑셀/문서 틀). 중앙 서버에 보관합니다.
   Launcher    : 개인 PC에 설치해 서버 요청을 대신 실행하는 작은 연결 프로그램
@@ -67,9 +69,10 @@ class SourceType(str, enum.Enum):
 class AppVisibility(str, enum.Enum):
     """앱을 누가 쓸 수 있는지."""
 
-    private = "private"    # 올린 사람만 사용 (개인용)
-    pending = "pending"    # 공식 등록 신청 -> 관리자 승인 대기
-    approved = "approved"  # 관리자 승인됨 -> 전원 사용 가능
+    private = "private"        # 올린 사람만 사용 (개인용)
+    department = "department"  # 부서 공통. owner_dept_code 부서원 전원이 사용
+    pending = "pending"        # 공식 등록 신청 -> 관리자 승인 대기
+    approved = "approved"      # 관리자 승인됨 -> 전원 사용 가능
 
 
 class RunStatus(str, enum.Enum):
@@ -100,7 +103,10 @@ class App(Base):
     # 유지보수 담당자를 찾기 위한 정보. 앱이 고장났을 때 누구에게 연락할지.
     owner: Mapped[str] = mapped_column(String(128), default="")  # 등록자 이름
     owner_user_id: Mapped[str] = mapped_column(String(128), default="", index=True)  # 사번
-    owner_dept: Mapped[str] = mapped_column(String(128), default="")  # 소속
+    owner_dept: Mapped[str] = mapped_column(String(128), default="")  # 소속(사람이 적는 글자)
+    # 부서 공통 앱의 주인 부서(Department.code). visibility=department 일 때 씁니다.
+    # 사람이 적는 owner_dept 와 달리 이 값은 부서 표에 실제로 있는 코드입니다.
+    owner_dept_code: Mapped[str] = mapped_column(String(64), default="", index=True)
     owner_contact: Mapped[str] = mapped_column(String(256), default="")  # 메일/사내메신저
     icon: Mapped[str] = mapped_column(String(16), default="🧩")
 
@@ -177,7 +183,11 @@ class AgentCard(Base):
     __tablename__ = "agent_cards"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    # 만든 사람의 사번. 부서 공통 카드도 "누가 만들었나"를 남기려고 채웁니다.
     user_id: Mapped[str] = mapped_column(String(128), index=True)
+    # 값이 있으면 개인 카드가 아니라 그 부서(Department.code)의 공통 카드입니다.
+    # 부서원 전원의 화면에 같이 보이고, 고치는 것은 부서 담당자와 관리자만 합니다.
+    dept_code: Mapped[str] = mapped_column(String(64), default="", index=True)
     title: Mapped[str] = mapped_column(String(128))
     description: Mapped[str] = mapped_column(Text, default="")
     icon: Mapped[str] = mapped_column(String(16), default="⭐")
@@ -289,6 +299,56 @@ class User(Base):
     last_login_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+
+
+class Department(Base):
+    """부서 하나.
+
+    왜 따로 표를 두나: 사람이 적어 넣는 소속 글자("SW개발팀", "sw 개발팀",
+    "SW개발 팀")로는 같은 부서인지 시스템이 알 수 없습니다. 부서 공통 앱과
+    부서 공통 카드는 "같은 부서인가"를 정확히 따져야 하므로, 부서를 표로 만들고
+    **부서 코드**로 묶습니다.
+
+    나중에 사내 SSO 가 부서 정보를 내려주면 code 를 사내 부서코드로 맞추면 됩니다.
+    """
+
+    __tablename__ = "departments"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    # 사내 부서코드. 사람이 아니라 시스템이 보는 값입니다. 예) SW1
+    code: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(128))  # 화면에 보이는 이름. 예) SW개발팀
+    description: Mapped[str] = mapped_column(Text, default="")
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class DeptRole(str, enum.Enum):
+    """부서 안에서의 역할."""
+
+    member = "member"    # 부서 공통 앱/카드를 쓸 수 있습니다
+    manager = "manager"  # 거기에 더해, 부서 공통 앱/카드를 등록·수정할 수 있습니다
+
+
+class DeptMember(Base):
+    """어떤 사번이 어느 부서에 묶여 있는지.
+
+    이 표가 "같은 부서인가"의 유일한 기준입니다(User.dept 글자는 화면 표시용).
+    한 사람이 여러 부서에 들어갈 수 있습니다(겸직, TF).
+    """
+
+    __tablename__ = "dept_members"
+    __table_args__ = (
+        UniqueConstraint("dept_code", "user_id", name="uq_dept_member"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    dept_code: Mapped[str] = mapped_column(String(64), index=True)
+    user_id: Mapped[str] = mapped_column(String(128), index=True)  # 사번
+    role: Mapped[DeptRole] = mapped_column(
+        Enum(DeptRole, native_enum=False), default=DeptRole.member
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 
 class Launcher(Base):
