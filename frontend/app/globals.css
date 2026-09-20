@@ -701,6 +701,21 @@ code {
   margin-top: 6px;
 }
 
+
+/* 의견 한 건, 버전 이력 한 줄: 내용 | 오른쪽 버튼
+   (앱 목록 .ui-app 은 앞에 아이콘 칸이 있어서 그대로 쓰면 글이 한 글자씩 접힙니다) */
+.ui-voc {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 13px;
+  padding: 15px var(--space-1);
+  border-top: 1px solid var(--line-soft);
+  align-items: start;
+}
+.ui-voc:first-of-type {
+  border-top: 0;
+}
+
 .ui-table {
   width: 100%;
   border-collapse: collapse;
@@ -848,7 +863,8 @@ code {
   .ui-tabs {
     gap: var(--space-4);
   }
-  .ui-app {
+  .ui-app,
+  .ui-voc {
     grid-template-columns: 1fr;
   }
   .ui-app > .ui-icon-tile {

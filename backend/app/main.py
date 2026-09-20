@@ -22,6 +22,8 @@ from app.api import (
     schedules,
     stats,
     tools,
+    versions,
+    voc,
 )
 from app.config import get_settings
 from app.db import SessionLocal, create_all
@@ -92,3 +94,5 @@ app.include_router(notifications.router)
 app.include_router(stats.router)
 app.include_router(tools.router)
 app.include_router(audit.router)
+app.include_router(voc.router)
+app.include_router(versions.router)

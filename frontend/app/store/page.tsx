@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { api, App } from "@/lib/api";
+import { api, getSession, App, VocCount } from "@/lib/api";
+import { UpdateModal, VocModal } from "@/components/apps/app-modals";
 import {
   Alert,
   Badge,
@@ -70,17 +71,26 @@ export default function Store() {
   // 등록은 자주 하는 일이 아니라서, 평소에는 목록만 보이고
   // "＋ 앱 등록"을 눌렀을 때만 이 상자가 열립니다.
   const [registerOpen, setRegisterOpen] = useState(false);
+  // 앱마다 «의견 3» 을 붙이려고 한 번에 세어 옵니다.
+  const [counts, setCounts] = useState<Record<string, VocCount>>({});
+  // 열려 있는 상자. 둘 다 앱 카드의 버튼에서 엽니다.
+  const [vocApp, setVocApp] = useState<App | null>(null);
+  const [updateApp, setUpdateApp] = useState<App | null>(null);
+  const [me, setMe] = useState<{ user_id: string; is_admin: boolean } | null>(null);
 
-  const reload = () =>
-    api
+  const reload = () => {
+    api.vocCounts().then(setCounts).catch(() => undefined);
+    return api
       .listApps()
       .then(setApps)
       .catch((e) => {
         setFailed(true);
         setMessage(String(e));
       });
+  };
 
   useEffect(() => {
+    setMe(getSession());
     reload();
   }, []);
 
@@ -186,8 +196,24 @@ export default function Store() {
                     등록자 {app.owner || app.owner_user_id || "-"}
                     {app.owner_contact && ` · ${app.owner_contact}`}
                   </Tag>
+                  {counts[app.id]?.total ? (
+                    <Tag>
+                      의견 {counts[app.id].total}
+                      {counts[app.id].open ? ` · 안 끝난 ${counts[app.id].open}` : ""}
+                      {counts[app.id].rating ? ` · ★${counts[app.id].rating}` : ""}
+                    </Tag>
+                  ) : null}
                 </div>
                 <Row style={{ marginTop: "var(--space-3)" }}>
+                  <Button variant="ghost" small onClick={() => setVocApp(app)}>
+                    💬 의견
+                    {counts[app.id]?.open ? ` ${counts[app.id].open}` : ""}
+                  </Button>
+                  {(app.owner_user_id === me?.user_id || me?.is_admin) && (
+                    <Button variant="ghost" small onClick={() => setUpdateApp(app)}>
+                      ⬆ 업데이트
+                    </Button>
+                  )}
                   <Button variant="ghost" small onClick={() => api.refreshApp(app.id).then(reload)}>
                     새로고침
                   </Button>
@@ -262,6 +288,24 @@ export default function Store() {
 
         </div>
       </Modal>
+
+      {vocApp && (
+        <VocModal
+          app={vocApp}
+          meId={me?.user_id || ""}
+          open
+          onClose={() => setVocApp(null)}
+          onChanged={reload}
+        />
+      )}
+      {updateApp && (
+        <UpdateModal
+          app={updateApp}
+          open
+          onClose={() => setUpdateApp(null)}
+          onUpdated={reload}
+        />
+      )}
     </>
   );
 }
