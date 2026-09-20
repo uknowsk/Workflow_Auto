@@ -2,6 +2,7 @@
 
 // 로그인하고 처음 보는 화면. 오늘 챙겨야 할 것만 한눈에 모아 둡니다.
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { api, Dashboard, DashboardWidget, getSession } from "@/lib/api";
 import {
   Alert,
@@ -125,7 +126,7 @@ export default function DashboardPage() {
       <Section>
         <SectionHead
           label="예약된 작업"
-          action={<a href="/schedules">예약 만들기</a>}
+          action={<Link href="/schedules">예약 만들기</Link>}
         />
         {data.schedules.length === 0 ? (
           <Empty>
@@ -145,7 +146,7 @@ export default function DashboardPage() {
       </Section>
 
       <Section>
-        <SectionHead label="내 레시피" action={<a href="/recipes">전체 보기</a>} />
+        <SectionHead label="내 레시피" action={<Link href="/recipes">전체 보기</Link>} />
         {data.recipes.length === 0 ? (
           <Empty>
             요청을 한 번 실행해서 잘 나오면, 그 흐름을 레시피로 저장해 보세요.
@@ -155,9 +156,9 @@ export default function DashboardPage() {
           <Rows>
             {data.recipes.map((row) => (
               <div key={row.id}>
-                <a className="ui-list__main" href="/recipes">
+                <Link className="ui-list__main" href="/recipes">
                   {row.icon} {row.title}
-                </a>
+                </Link>
                 <When>{row.run_count}번 실행</When>
               </div>
             ))}
@@ -188,7 +189,7 @@ export default function DashboardPage() {
           <SectionHead
             label="이달의 앱"
             note="성공 호출 수 기준"
-            action={<a href="/stats">전체 순위</a>}
+            action={<Link href="/stats">전체 순위</Link>}
           />
           <div style={{ display: "grid", gap: "var(--space-3)" }}>
             {data.ranking.map((row) => (

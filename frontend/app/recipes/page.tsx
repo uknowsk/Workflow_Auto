@@ -2,6 +2,7 @@
 
 // 워크플로우 레시피. 앱 여러 개를 엮은 흐름을 이름 붙여 저장해 두고 버튼 하나로 재실행합니다.
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { api, Recipe, Run, getSession } from "@/lib/api";
 import {
   Alert,
@@ -91,7 +92,7 @@ export default function Recipes() {
 
       <Muted style={{ marginBottom: "var(--space-5)" }}>
         카드가 앱 하나라면, 레시피는 <b>앱 여러 개를 엮은 카드</b>입니다. 요청을 한 번
-        실행해서 잘 나왔으면 <a href="/">내 에이전트</a> 화면에서 그 흐름을 레시피로
+        실행해서 잘 나왔으면 <Link href="/">내 에이전트</Link> 화면에서 그 흐름을 레시피로
         저장해 두세요.
       </Muted>
 
