@@ -36,6 +36,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app import crypto
 from app.db import Base
 
 
@@ -143,7 +144,20 @@ class App(Base):
     # 이런 앱이 계획에 끼면 오케스트레이터가 실행 전에 사용자에게 확인을 받습니다.
     requires_confirmation: Mapped[bool] = mapped_column(Boolean, default=False)
     # 사내 인증이 필요하면 헤더로 넣습니다. 예) {"Authorization": "Bearer ..."}
-    auth_headers: Mapped[dict] = mapped_column(JSON, default=dict)
+    # DB 에는 잠긴 채로 들어갑니다(app/crypto.py). 코드에서는 아래 auth_headers
+    # 로 평소처럼 읽고 쓰면 되고, 잠그고 푸는 일은 알아서 일어납니다.
+    auth_headers_sealed: Mapped[dict] = mapped_column(
+        "auth_headers", JSON, default=dict
+    )
+
+    @property
+    def auth_headers(self) -> dict:
+        """앱을 부를 때 붙일 헤더. 읽는 순간 풉니다."""
+        return crypto.unseal(self.auth_headers_sealed)
+
+    @auth_headers.setter
+    def auth_headers(self, value: dict | None) -> None:
+        self.auth_headers_sealed = crypto.seal(value)
 
     status: Mapped[AppStatus] = mapped_column(
         Enum(AppStatus, native_enum=False), default=AppStatus.active

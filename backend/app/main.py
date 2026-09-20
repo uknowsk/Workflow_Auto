@@ -26,7 +26,7 @@ from app.api import (
     versions,
     voc,
 )
-from app.config import get_settings
+from app.config import check_production_safety, get_settings
 from app.db import SessionLocal, create_all
 from app.health_monitor import run_forever
 from app.scheduler.service import rearm_all
@@ -34,6 +34,10 @@ from app.seed import seed_from_file, seed_bootstrap_admin
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
+
+# 운영에 올리면 안 되는 설정이 남아 있으면 여기서 멈춥니다.
+# (경고만 찍으면 아무도 안 보고 그대로 올라갑니다. 이유는 화면에 그대로 찍힙니다.)
+check_production_safety(settings)
 
 
 @asynccontextmanager
@@ -71,10 +75,10 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# 사내 배포 시에는 allow_origins 를 실제 프론트 주소로 좁히세요.
+# 허용 주소는 .env 의 CORS_ORIGINS 로 정합니다(운영에서는 * 를 쓸 수 없습니다).
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.cors_origin_list,
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
