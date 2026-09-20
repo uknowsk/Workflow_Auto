@@ -1747,8 +1747,21 @@ body.no-dock {
   pointer-events: none;
   border: 1px solid rgba(255, 255, 255, 0.95);
   box-shadow:
-    0 0 0 1px rgba(26, 26, 23, 0.85),
-    inset 0 0 0 1px rgba(26, 26, 23, 0.85);
+    0 0 0 1px rgba(26, 26, 23, 0.9),
+    inset 0 0 0 1px rgba(26, 26, 23, 0.9);
+}
+/* 동그라미 한가운데 점. 브라우저가 마우스 포인터를 흰색으로 그려 버려도
+   "정확히 여기" 를 가리키는 점은 남습니다. */
+.tool-draw__cursor-dot {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 3px;
+  height: 3px;
+  margin: -1.5px 0 0 -1.5px;
+  border-radius: 50%;
+  background: #1a1a17;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.95);
 }
 .tool-draw__text {
   position: absolute;
