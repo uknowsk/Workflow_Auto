@@ -17,7 +17,8 @@ export default function Login() {
     try {
       const result = await api.login(userId, password);
       saveSession(result.token, result.user_id, result.is_admin);
-      location.href = "/";
+      // 로그인하면 전체 흐름을 한눈에 보는 대시보드로 갑니다.
+      location.href = "/dashboard";
     } catch (err) {
       setError(String(err instanceof Error ? err.message : err));
     } finally {
