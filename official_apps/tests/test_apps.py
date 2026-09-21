@@ -46,6 +46,73 @@ def test_프로젝트를_등록하면_단계별_산출물이_따라온다():
     assert "시스템설계서" in mine["next_deliverables"]
 
 
+def test_마일스톤은_시간축_위치와_산출물을_들고_온다():
+    project = dev_projects.register_project(
+        "E-RTS",
+        "차세대 단말",
+        model="SM-X100",
+        stage="설계",
+        start_date="2026-01-01",
+        rts_date="2026-12-31",
+        milestones="설계완료 2026-03-31, 구현완료 2026-06-30 [단위시험결과서]",
+    )
+
+    assert project["model"] == "SM-X100"
+    # RTS 는 시간축의 끝이라 마일스톤 줄에도 같이 보입니다.
+    names = [m["name"] for m in project["milestones"]]
+    assert names == ["설계완료", "구현완료", "RTS (개발완료)"]
+
+    # 이름에 단계가 들어 있으면 그 단계의 산출물이 자동으로 따라옵니다.
+    design = project["milestones"][0]
+    assert [d["name"] for d in design["deliverables"]] == [
+        "시스템설계서",
+        "화면설계서",
+        "DB설계서",
+    ]
+    assert all(d["done"] is False for d in design["deliverables"])
+    # 대괄호로 적은 산출물은 그것만 씁니다.
+    assert [d["name"] for d in project["milestones"][1]["deliverables"]] == [
+        "단위시험결과서"
+    ]
+
+    # 시간축에서의 위치. 1년짜리 프로젝트의 3월 말이면 4분의 1쯤입니다.
+    assert 22 < design["percent"] < 26
+    assert 0 <= project["timeline"]["percent"] <= 100
+
+
+def test_산출물을_내면_마일스톤이_완료로_바뀐다():
+    project = dev_projects.register_project(
+        "E-DONE",
+        "완료 확인용",
+        stage="분석",
+        start_date="2026-01-01",
+        rts_date="2026-12-31",
+        milestones="분석완료 2026-03-31 [요구사항정의서]",
+    )
+    assert project["milestones"][0]["done"] is False
+
+    dev_projects.fill_form(
+        {"project_name": "완료 확인용", "author": "김로아"},
+        form_key="requirements",
+        project_id=project["id"],
+        user_id="E-DONE",
+    )
+
+    after = dev_projects.list_my_projects("E-DONE")["projects"][0]
+    milestone = after["milestones"][0]
+    assert milestone["done"] is True and milestone["done_count"] == 1
+
+
+def test_마일스톤은_나중에_통째로_다시_적을_수_있다():
+    project = dev_projects.register_project("E-MS", "마일스톤 교체", stage="기획")
+    result = dev_projects.set_milestones(project["id"], "PP 2026-05-20, RTS 2026-06-30")
+
+    assert result["ok"] is True
+    assert [m["name"] for m in result["project"]["milestones"]] == ["PP", "RTS"]
+    # 날짜가 없으면 시간축에 찍을 수 없으므로 거절합니다.
+    assert dev_projects.set_milestones(project["id"], "이름만 있음")["ok"] is False
+
+
 def test_양식을_채우면_초안이_남는다():
     project = dev_projects.register_project("E-DRAFT", "초안 과제", stage="분석")
     result = dev_projects.fill_form(
