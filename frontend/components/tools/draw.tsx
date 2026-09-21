@@ -36,6 +36,8 @@ type Shape =
       to: Point;
       color: string;
       width: number;
+      /** 사각형·원 안을 채울 색. null 이면 안을 비웁니다. */
+      fill?: string | null;
     }
   | { kind: "text"; at: Point; text: string; color: string; size: number }
   | { kind: "image"; src: string };
@@ -62,6 +64,12 @@ const COLORS = [
 ];
 
 const WIDTHS = [2, 4, 8, 16];
+
+/** 마우스 자리 동그라미의 최소 지름(px). 이보다 작으면 눈에 안 띕니다. */
+const RING_MIN = 18;
+
+/** 안을 채울 수 있는 도구(닫힌 도형만). 직선·화살표는 채울 안이 없습니다. */
+const FILLABLE = new Set<ToolKind>(["rect", "ellipse"]);
 
 /** 도형 하나를 캔버스에 그립니다. */
 function paint(
@@ -126,6 +134,13 @@ function paint(
     return;
   }
   const { from, to } = shape;
+  // 안을 먼저 채우고 그 위에 테두리를 긋습니다. 반대로 하면 채운 색이
+  // 테두리 안쪽 절반을 덮어서 선이 얇아 보입니다.
+  const fillShape = () => {
+    if (!shape.fill) return;
+    ctx.fillStyle = shape.fill;
+    ctx.fill();
+  };
   ctx.beginPath();
   if (shape.kind === "line") {
     ctx.moveTo(from.x, from.y);
@@ -133,6 +148,7 @@ function paint(
     ctx.stroke();
   } else if (shape.kind === "rect") {
     ctx.rect(from.x, from.y, to.x - from.x, to.y - from.y);
+    fillShape();
     ctx.stroke();
   } else if (shape.kind === "ellipse") {
     ctx.ellipse(
@@ -144,6 +160,7 @@ function paint(
       0,
       Math.PI * 2
     );
+    fillShape();
     ctx.stroke();
   } else {
     // 화살표: 몸통을 긋고 끝에 날개 두 개를 붙입니다.
@@ -174,12 +191,17 @@ export default function DrawTool() {
   const draftRef = useRef<Shape | null>(null);
   const textInputRef = useRef<HTMLInputElement | null>(null);
   const drawingRef = useRef(false);
+  const cursorRef = useRef<HTMLDivElement | null>(null);
+  // 마우스가 캔버스 안 어디에 있는지(화면 px). 캔버스 밖이면 null.
+  const cursorPosRef = useRef<Point | null>(null);
 
   const [shapes, setShapes] = useState<Shape[]>([]);
   const [redo, setRedo] = useState<Shape[]>([]);
   const [tool, setTool] = useState<ToolKind>("pen");
   const [color, setColor] = useState(COLORS[0]);
   const [width, setWidth] = useState(4);
+  // 사각형·원 안을 채울 색. null 이면 "없음"(안을 비움)입니다.
+  const [fill, setFill] = useState<string | null>(null);
   const [textAt, setTextAt] = useState<Point | null>(null);
   const [textValue, setTextValue] = useState("");
 
@@ -228,12 +250,64 @@ export default function DrawTool() {
     };
   };
 
+  /**
+   * 마우스 자리를 알려 주는 동그라미를 지금 위치·굵기에 맞춥니다.
+   *
+   * 조준선(CSS cursor)만으로 충분할 것 같지만, 원격 화면이나 일부 사내 PC 는
+   * 마우스 모양을 제 마음대로 그려서 흰 바탕에 흰 포인터가 되기도 합니다.
+   * 이 동그라미는 브라우저가 아니라 화면 안에 우리가 직접 그리는 것이라
+   * 그런 환경에서도 반드시 보입니다. 그래서 모든 도구에서 띄웁니다.
+   *
+   * 마우스를 움직일 때마다 React 를 거치면 화면 전체가 다시 계산되므로,
+   * 이 동그라미만 직접(ref) 손댑니다.
+   */
+  const syncCursor = useCallback(() => {
+    const ring = cursorRef.current;
+    const canvas = canvasRef.current;
+    const at = cursorPosRef.current;
+    if (!ring || !canvas) return;
+    if (!at) {
+      ring.style.display = "none";
+      return;
+    }
+    const box = canvas.getBoundingClientRect();
+    // 펜·지우개는 실제로 칠해지는 넓이를 보여 줍니다. 캔버스는 1600 폭으로 그리고
+    // 화면에서는 줄여 보여 주므로 굵기도 같은 비율로 줄입니다. 그래도 눈에 띄게
+    // 최소 크기를 두고, 굵기와 상관없는 도구는 그 최소 크기로만 띄웁니다.
+    const brush = tool === "pen" || tool === "eraser" ? width * (box.width / W) : 0;
+    const size = Math.max(RING_MIN, brush);
+    ring.style.display = "block";
+    ring.style.width = `${size}px`;
+    ring.style.height = `${size}px`;
+    ring.style.transform = `translate(${at.x}px, ${at.y}px) translate(-50%, -50%)`;
+  }, [tool, width]);
+
+  // 마우스를 안 움직여도 도구·굵기를 바꾸면 동그라미가 따라오게 합니다.
+  useEffect(() => {
+    syncCursor();
+  }, [syncCursor]);
+
+  const trackCursor = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    const box = event.currentTarget.getBoundingClientRect();
+    cursorPosRef.current = {
+      x: event.clientX - box.left,
+      y: event.clientY - box.top,
+    };
+    syncCursor();
+  };
+
+  const leaveCursor = () => {
+    cursorPosRef.current = null;
+    syncCursor();
+  };
+
   const commit = (shape: Shape) => {
     setShapes((prev) => [...prev, shape]);
     setRedo([]);
   };
 
   const onPointerDown = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    trackCursor(event);
     const at = toCanvas(event);
     if (tool === "text") {
       setTextAt(at);
@@ -245,11 +319,12 @@ export default function DrawTool() {
     draftRef.current =
       tool === "pen" || tool === "eraser"
         ? { kind: tool, points: [at], color, width }
-        : { kind: tool, from: at, to: at, color, width };
+        : { kind: tool, from: at, to: at, color, width, fill: FILLABLE.has(tool) ? fill : null };
     render();
   };
 
   const onPointerMove = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    trackCursor(event);
     if (!drawingRef.current || !draftRef.current) return;
     const at = toCanvas(event);
     const draft = draftRef.current;
@@ -266,7 +341,9 @@ export default function DrawTool() {
     render();
   };
 
-  const onPointerUp = () => {
+  const onPointerUp = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    // 손가락은 떼면 화면에서 사라지므로 동그라미도 같이 치웁니다.
+    if (event.pointerType === "touch") leaveCursor();
     if (!drawingRef.current) return;
     drawingRef.current = false;
     const draft = draftRef.current;
@@ -468,6 +545,27 @@ export default function DrawTool() {
       </Row>
 
       <Row className="tool-draw__bar">
+        <span className="ui-eyebrow">채우기</span>
+        <Chip active={fill === null} onClick={() => setFill(null)}>
+          없음
+        </Chip>
+        {COLORS.map((value) => (
+          <button
+            key={value}
+            type="button"
+            className={`tool-draw__swatch${fill === value ? " is-on" : ""}`}
+            style={{ background: value }}
+            aria-label={`채우기 ${value}`}
+            aria-pressed={fill === value}
+            onClick={() => setFill(value)}
+          />
+        ))}
+        {!FILLABLE.has(tool) && (
+          <Muted>사각형과 원을 고르면 안이 채워집니다.</Muted>
+        )}
+      </Row>
+
+      <Row className="tool-draw__bar">
         <Button variant="ghost" small onClick={undo} disabled={!shapes.length}>
           되돌리기
         </Button>
@@ -492,7 +590,12 @@ export default function DrawTool() {
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
           onPointerCancel={onPointerUp}
+          onPointerEnter={trackCursor}
+          onPointerLeave={leaveCursor}
         />
+        <div className="tool-draw__cursor" ref={cursorRef} aria-hidden>
+          <i className="tool-draw__cursor-dot" />
+        </div>
         {textAt && (
           <div className="tool-draw__text" style={textStyle}>
             <input

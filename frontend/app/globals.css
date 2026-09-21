@@ -701,6 +701,21 @@ code {
   margin-top: 6px;
 }
 
+
+/* 의견 한 건, 버전 이력 한 줄: 내용 | 오른쪽 버튼
+   (앱 목록 .ui-app 은 앞에 아이콘 칸이 있어서 그대로 쓰면 글이 한 글자씩 접힙니다) */
+.ui-voc {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 13px;
+  padding: 15px var(--space-1);
+  border-top: 1px solid var(--line-soft);
+  align-items: start;
+}
+.ui-voc:first-of-type {
+  border-top: 0;
+}
+
 .ui-table {
   width: 100%;
   border-collapse: collapse;
@@ -848,7 +863,8 @@ code {
   .ui-tabs {
     gap: var(--space-4);
   }
-  .ui-app {
+  .ui-app,
+  .ui-voc {
     grid-template-columns: 1fr;
   }
   .ui-app > .ui-icon-tile {
@@ -1257,11 +1273,17 @@ h3 {
 :root {
   --dock-w: 68px;      /* 왼쪽 인덱스 폭. 본문은 이만큼 오른쪽으로 밀립니다. */
   --topbar-h: 53px;    /* 위 고정 바 높이. 서랍은 그 아래에서 시작합니다. */
+  --drawer-top: 104px; /* 메뉴줄이 끝나는 높이. 화면이 뜨면 dock.tsx 가 실제 값으로 고칩니다. */
 }
 
 /* 본문이 인덱스에 가리지 않도록 그만큼 비워 둡니다. */
 body {
   padding-left: var(--dock-w);
+}
+
+/* 인덱스를 띄우지 않는 화면(로그인, 도구)에서는 그 여백도 없앱니다. */
+body.no-dock {
+  padding-left: 0;
 }
 
 .tdock {
@@ -1328,7 +1350,9 @@ body {
 .tdrawer {
   position: fixed;
   left: var(--dock-w);
-  top: var(--topbar-h);
+  /* 위쪽 메뉴줄 아래에서 시작합니다. 덮어 버리면 도구를 열어 둔 채로는
+     다른 화면으로 갈 수가 없습니다. --drawer-top 은 dock.tsx 가 재서 넣어 줍니다. */
+  top: var(--drawer-top);
   bottom: 0;
   z-index: 29;
   width: 0;
@@ -1598,6 +1622,59 @@ body {
   font-size: var(--text-md);
 }
 
+/* 도시 고르기: 입력창 아래로 후보를 펼칩니다 */
+.tool-clock__pick {
+  position: relative;
+}
+.tool-clock__pick .ui-input {
+  width: 100%;
+}
+.tool-clock__suggest {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  max-height: 260px;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-pop);
+}
+.tool-clock__suggest--empty {
+  padding: var(--space-3);
+}
+.tool-clock__option {
+  display: flex;
+  gap: var(--space-2);
+  align-items: baseline;
+  flex-wrap: wrap;
+  padding: 7px 9px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.tool-clock__option--on {
+  background: var(--accent-soft);
+}
+.tool-clock__option-name {
+  font-weight: 600;
+  color: var(--ink);
+}
+.tool-clock__option-sub {
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+.tool-clock__option-gap {
+  margin-left: auto;
+  font-size: var(--text-sm);
+  color: var(--muted);
+  font-family: var(--font-mono);
+}
+
 /* 날짜 계산 */
 .tool-date__result {
   display: flex;
@@ -1704,7 +1781,40 @@ body {
   width: 100%;
   aspect-ratio: 16 / 10;
   touch-action: none; /* 그리는 중에 화면이 같이 끌리지 않게 */
-  cursor: crosshair;
+  /* 브라우저 기본 crosshair 는 환경에 따라 흰색(또는 반전색)으로 그려져서
+     흰 캔버스 위에서 안 보입니다. 그래서 흰 테두리 + 어두운 심지로 된 조준선을
+     직접 그려 넣습니다. 바깥에서 받아오지 않는 그림(data URL)이라 폐쇄망에서도 뜹니다. */
+  cursor:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24'%3E%3Cpath d='M12 2.5v7M12 14.5v7M2.5 12h7M14.5 12h7' stroke='%23ffffff' stroke-width='3.5' stroke-linecap='round'/%3E%3Cpath d='M12 2.5v7M12 14.5v7M2.5 12h7M14.5 12h7' stroke='%231a1a17' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E")
+      12 12,
+    crosshair;
+}
+/* 마우스가 지금 어디인지 알려 주는 동그라미(펜·지우개일 때는 굵기도 보여 줍니다).
+   밝은 테두리와 어두운 테두리를 겹쳐 흰 바탕에서도, 어두운 그림 위에서도 보입니다. */
+.tool-draw__cursor {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: none;
+  border-radius: 50%;
+  pointer-events: none;
+  border: 1px solid rgba(255, 255, 255, 0.95);
+  box-shadow:
+    0 0 0 1px rgba(26, 26, 23, 0.9),
+    inset 0 0 0 1px rgba(26, 26, 23, 0.9);
+}
+/* 동그라미 한가운데 점. 브라우저가 마우스 포인터를 흰색으로 그려 버려도
+   "정확히 여기" 를 가리키는 점은 남습니다. */
+.tool-draw__cursor-dot {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 3px;
+  height: 3px;
+  margin: -1.5px 0 0 -1.5px;
+  border-radius: 50%;
+  background: #1a1a17;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.95);
 }
 .tool-draw__text {
   position: absolute;

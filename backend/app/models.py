@@ -5,6 +5,8 @@
   App         : 앱스토어에 등록된 개발자 앱 (MCP 서버 한 대)
   AppTool     : 그 앱이 제공하는 기능 하나 (MCP tool). 등록 시 자동으로 읽어옵니다.
   AgentCard   : 사용자가 "자주 쓰는 에이전트"로 만들어 둔 카드
+  Department  : 부서 하나. 부서 공통 앱/카드의 주인 자리입니다
+  DeptMember  : 어떤 사번이 어느 부서에 묶여 있는지 (부서원 명단)
   Run         : 사용자의 자연어 요청 1건과 그 처리 결과
   FormTemplate: 결과를 채워 넣을 양식(엑셀/문서 틀). 중앙 서버에 보관합니다.
   Launcher    : 개인 PC에 설치해 서버 요청을 대신 실행하는 작은 연결 프로그램
@@ -12,6 +14,9 @@
   LlmUsage    : Gauss 토큰 사용량
   Recipe      : 한 번 잘 돌아간 앱 호출 흐름에 이름을 붙여 저장한 것(워크플로우)
   Schedule    : 시간이 되면 스스로 실행되는 예약
+  AppFeedback : 앱을 써 본 사람이 등록자에게 남긴 의견(VOC)
+  AppVersion  : 앱을 새 버전으로 올린 이력 (되돌리기용)
+  AdminSetting: 관리자가 화면에서 바꾸는 값 (보관 기간, Gauss 한도)
 """
 from __future__ import annotations
 
@@ -32,6 +37,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app import crypto
 from app.db import Base
 
 
@@ -67,9 +73,10 @@ class SourceType(str, enum.Enum):
 class AppVisibility(str, enum.Enum):
     """앱을 누가 쓸 수 있는지."""
 
-    private = "private"    # 올린 사람만 사용 (개인용)
-    pending = "pending"    # 공식 등록 신청 -> 관리자 승인 대기
-    approved = "approved"  # 관리자 승인됨 -> 전원 사용 가능
+    private = "private"        # 올린 사람만 사용 (개인용)
+    department = "department"  # 부서 공통. owner_dept_code 부서원 전원이 사용
+    pending = "pending"        # 공식 등록 신청 -> 관리자 승인 대기
+    approved = "approved"      # 관리자 승인됨 -> 전원 사용 가능
 
 
 class RunStatus(str, enum.Enum):
@@ -80,6 +87,7 @@ class RunStatus(str, enum.Enum):
     succeeded = "succeeded"
     failed = "failed"
     rejected = "rejected"                  # 사용자가 계획을 거부함
+    canceled = "canceled"                  # 사용자가 도중에 멈춤
 
 
 class App(Base):
@@ -100,7 +108,10 @@ class App(Base):
     # 유지보수 담당자를 찾기 위한 정보. 앱이 고장났을 때 누구에게 연락할지.
     owner: Mapped[str] = mapped_column(String(128), default="")  # 등록자 이름
     owner_user_id: Mapped[str] = mapped_column(String(128), default="", index=True)  # 사번
-    owner_dept: Mapped[str] = mapped_column(String(128), default="")  # 소속
+    owner_dept: Mapped[str] = mapped_column(String(128), default="")  # 소속(사람이 적는 글자)
+    # 부서 공통 앱의 주인 부서(Department.code). visibility=department 일 때 씁니다.
+    # 사람이 적는 owner_dept 와 달리 이 값은 부서 표에 실제로 있는 코드입니다.
+    owner_dept_code: Mapped[str] = mapped_column(String(64), default="", index=True)
     owner_contact: Mapped[str] = mapped_column(String(256), default="")  # 메일/사내메신저
     icon: Mapped[str] = mapped_column(String(16), default="🧩")
 
@@ -135,7 +146,20 @@ class App(Base):
     # 이런 앱이 계획에 끼면 오케스트레이터가 실행 전에 사용자에게 확인을 받습니다.
     requires_confirmation: Mapped[bool] = mapped_column(Boolean, default=False)
     # 사내 인증이 필요하면 헤더로 넣습니다. 예) {"Authorization": "Bearer ..."}
-    auth_headers: Mapped[dict] = mapped_column(JSON, default=dict)
+    # DB 에는 잠긴 채로 들어갑니다(app/crypto.py). 코드에서는 아래 auth_headers
+    # 로 평소처럼 읽고 쓰면 되고, 잠그고 푸는 일은 알아서 일어납니다.
+    auth_headers_sealed: Mapped[dict] = mapped_column(
+        "auth_headers", JSON, default=dict
+    )
+
+    @property
+    def auth_headers(self) -> dict:
+        """앱을 부를 때 붙일 헤더. 읽는 순간 풉니다."""
+        return crypto.unseal(self.auth_headers_sealed)
+
+    @auth_headers.setter
+    def auth_headers(self, value: dict | None) -> None:
+        self.auth_headers_sealed = crypto.seal(value)
 
     status: Mapped[AppStatus] = mapped_column(
         Enum(AppStatus, native_enum=False), default=AppStatus.active
@@ -177,7 +201,11 @@ class AgentCard(Base):
     __tablename__ = "agent_cards"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    # 만든 사람의 사번. 부서 공통 카드도 "누가 만들었나"를 남기려고 채웁니다.
     user_id: Mapped[str] = mapped_column(String(128), index=True)
+    # 값이 있으면 개인 카드가 아니라 그 부서(Department.code)의 공통 카드입니다.
+    # 부서원 전원의 화면에 같이 보이고, 고치는 것은 부서 담당자와 관리자만 합니다.
+    dept_code: Mapped[str] = mapped_column(String(64), default="", index=True)
     title: Mapped[str] = mapped_column(String(128))
     description: Mapped[str] = mapped_column(Text, default="")
     icon: Mapped[str] = mapped_column(String(16), default="⭐")
@@ -291,6 +319,56 @@ class User(Base):
     )
 
 
+class Department(Base):
+    """부서 하나.
+
+    왜 따로 표를 두나: 사람이 적어 넣는 소속 글자("SW개발팀", "sw 개발팀",
+    "SW개발 팀")로는 같은 부서인지 시스템이 알 수 없습니다. 부서 공통 앱과
+    부서 공통 카드는 "같은 부서인가"를 정확히 따져야 하므로, 부서를 표로 만들고
+    **부서 코드**로 묶습니다.
+
+    나중에 사내 SSO 가 부서 정보를 내려주면 code 를 사내 부서코드로 맞추면 됩니다.
+    """
+
+    __tablename__ = "departments"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    # 사내 부서코드. 사람이 아니라 시스템이 보는 값입니다. 예) SW1
+    code: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(128))  # 화면에 보이는 이름. 예) SW개발팀
+    description: Mapped[str] = mapped_column(Text, default="")
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class DeptRole(str, enum.Enum):
+    """부서 안에서의 역할."""
+
+    member = "member"    # 부서 공통 앱/카드를 쓸 수 있습니다
+    manager = "manager"  # 거기에 더해, 부서 공통 앱/카드를 등록·수정할 수 있습니다
+
+
+class DeptMember(Base):
+    """어떤 사번이 어느 부서에 묶여 있는지.
+
+    이 표가 "같은 부서인가"의 유일한 기준입니다(User.dept 글자는 화면 표시용).
+    한 사람이 여러 부서에 들어갈 수 있습니다(겸직, TF).
+    """
+
+    __tablename__ = "dept_members"
+    __table_args__ = (
+        UniqueConstraint("dept_code", "user_id", name="uq_dept_member"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    dept_code: Mapped[str] = mapped_column(String(64), index=True)
+    user_id: Mapped[str] = mapped_column(String(128), index=True)  # 사번
+    role: Mapped[DeptRole] = mapped_column(
+        Enum(DeptRole, native_enum=False), default=DeptRole.member
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
 class Launcher(Base):
     """Launcher - 개인 PC에 설치하는 작은 연결 프로그램.
 
@@ -399,6 +477,22 @@ class LlmUsage(Base):
     period: Mapped[str] = mapped_column(String(7), index=True, default="")  # YYYY-MM
     day: Mapped[str] = mapped_column(String(10), index=True, default="")    # YYYY-MM-DD
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class AdminSetting(Base):
+    """관리자가 화면에서 바꾸는 값 하나(보관 기간, Gauss 한도 등).
+
+    어떤 값이 있는지와 기본값은 app/settings_store.py 에 적혀 있습니다.
+    여기에는 "기본값과 달라진 것"만 줄로 남습니다.
+    """
+
+    __tablename__ = "admin_settings"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[str] = mapped_column(String(64), default="")
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_now, onupdate=_now
+    )
 
 
 class Notification(Base):
@@ -573,3 +667,102 @@ class Drawing(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_now, onupdate=_now
     )
+
+
+class VocKind(str, enum.Enum):
+    """의견의 종류. 고르는 값이 많으면 아무도 안 고르므로 셋만 둡니다."""
+
+    bug = "bug"            # 잘 안 돼요
+    idea = "idea"          # 이런 게 있으면 좋겠어요
+    question = "question"  # 사용법을 모르겠어요
+
+
+class VocStatus(str, enum.Enum):
+    """등록자가 옮겨 놓는 처리 상태."""
+
+    open = "open"                # 접수됨(아직 안 봤거나 검토 전)
+    in_progress = "in_progress"  # 고치는 중
+    done = "done"                # 처리 완료
+    wontfix = "wontfix"          # 안 고치기로 함(이유를 답변에 적습니다)
+
+
+class AppFeedback(Base):
+    """앱스토어 앱에 사용자가 남긴 의견(VOC) 한 건.
+
+    "누가 - 어떤 앱에 - 무엇을" 이 한 줄에 다 있어야 등록자가 바로 고칠 수
+    있습니다. 그래서 의견을 남긴 시점의 앱 버전(app_version)까지 같이 적어
+    둡니다. 고쳐 놓은 버전에 대한 옛날 제보를 붙잡고 있지 않기 위해서입니다.
+    """
+
+    __tablename__ = "app_feedback"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    app_id: Mapped[str] = mapped_column(String(36), index=True)
+    # 앱이 지워져도 의견 기록은 남도록 이름을 복사해 둡니다(감사 기록과 같은 이유).
+    app_name: Mapped[str] = mapped_column(String(128), default="")
+    # 받는 사람 = 앱을 올린 사람. 앱의 주인이 바뀌면 이 값도 같이 바꿔 줍니다.
+    owner_user_id: Mapped[str] = mapped_column(String(128), default="", index=True)
+
+    user_id: Mapped[str] = mapped_column(String(128), index=True)  # 의견 쓴 사람(사번)
+    user_name: Mapped[str] = mapped_column(String(128), default="")
+
+    kind: Mapped[VocKind] = mapped_column(
+        Enum(VocKind, native_enum=False), default=VocKind.bug, index=True
+    )
+    # 별점. 0 이면 "안 매김". 별점만으로는 뭘 고칠지 모르므로 어디까지나 덤입니다.
+    rating: Mapped[int] = mapped_column(Integer, default=0)
+    title: Mapped[str] = mapped_column(String(200), default="")
+    body: Mapped[str] = mapped_column(Text, default="")
+    # 의견을 남길 때 돌고 있던 앱 버전. 고친 뒤에 들어온 제보인지 구분합니다.
+    app_version: Mapped[str] = mapped_column(String(64), default="")
+    # 어떤 실행에서 겪은 일인지(있으면). 등록자가 그 실행 기록을 찾아볼 수 있습니다.
+    run_id: Mapped[str] = mapped_column(String(36), default="")
+
+    status: Mapped[VocStatus] = mapped_column(
+        Enum(VocStatus, native_enum=False), default=VocStatus.open, index=True
+    )
+    reply: Mapped[str] = mapped_column(Text, default="")  # 등록자 답변
+    replied_by: Mapped[str] = mapped_column(String(128), default="")
+    replied_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_now, onupdate=_now
+    )
+
+
+class AppVersion(Base):
+    """앱을 새 버전으로 올린 기록 한 줄.
+
+    업데이트는 바로 반영됩니다(매번 재승인을 받게 하면 아무도 업데이트를 안
+    합니다). 대신 여기에 이력이 남고, 공식 앱이면 관리자에게 알림이 가며,
+    문제가 있으면 이전 버전으로 되돌릴 수 있습니다.
+
+    GitHub/ZIP 으로 올린 앱은 버전마다 폴더를 따로 두기 때문에(packages.py)
+    package_path 만 다시 가리키면 진짜로 되돌아갑니다.
+    """
+
+    __tablename__ = "app_versions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    app_id: Mapped[str] = mapped_column(String(36), index=True)
+    version: Mapped[str] = mapped_column(String(64), default="")
+    note: Mapped[str] = mapped_column(Text, default="")  # 무엇이 바뀌었는지
+
+    # 이 버전이 쓰던 값들. 되돌리기는 이 값들을 앱에 다시 써 넣는 일입니다.
+    endpoint: Mapped[str] = mapped_column(String(512), default="")
+    source_type: Mapped[str] = mapped_column(String(16), default="manual")
+    source_url: Mapped[str] = mapped_column(String(512), default="")
+    source_ref: Mapped[str] = mapped_column(String(128), default="")  # 브랜치/태그
+    package_path: Mapped[str] = mapped_column(String(512), default="")
+    tool_count: Mapped[int] = mapped_column(Integer, default=0)
+
+    # 지금 돌고 있는 버전이면 True. 되돌리면 이 표시가 옮겨 갑니다.
+    is_current: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    # 되돌리기로 만들어진 줄이면, 어느 버전으로 되돌린 것인지.
+    rolled_back_from: Mapped[str] = mapped_column(String(36), default="")
+
+    created_by: Mapped[str] = mapped_column(String(128), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)

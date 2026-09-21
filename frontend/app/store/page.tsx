@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { api, App } from "@/lib/api";
+import { api, getSession, App, MyDept, VocCount } from "@/lib/api";
+import { UpdateModal, VocModal } from "@/components/apps/app-modals";
 import {
   Alert,
   Badge,
@@ -16,6 +17,7 @@ import {
   Muted,
   PageTitle,
   Row,
+  Select,
   Tag,
   type Tone,
 } from "@/components/ui";
@@ -37,25 +39,29 @@ const EMPTY: FormState = {
   owner_dept: "",
   owner_contact: "",
   icon: "🧩",
+  owner_dept_code: "",
 };
 
 const LABEL: Record<string, string> = {
   private: "개인용",
+  department: "부서 공통",
   pending: "승인 대기",
   approved: "공식",
 };
 
 const GRADE_TONE: Record<string, Tone> = {
   private: "neutral",
+  department: "ok",
   pending: "warn",
   approved: "accent",
 };
 
-type Filter = "all" | "approved" | "pending" | "private";
+type Filter = "all" | "approved" | "department" | "pending" | "private";
 
 const FILTERS: [Filter, string][] = [
   ["all", "전체"],
   ["approved", "공식"],
+  ["department", "부서 공통"],
   ["pending", "승인 대기"],
   ["private", "개인용"],
 ];
@@ -70,18 +76,33 @@ export default function Store() {
   // 등록은 자주 하는 일이 아니라서, 평소에는 목록만 보이고
   // "＋ 앱 등록"을 눌렀을 때만 이 상자가 열립니다.
   const [registerOpen, setRegisterOpen] = useState(false);
+  // 앱마다 «의견 3» 을 붙이려고 한 번에 세어 옵니다.
+  const [counts, setCounts] = useState<Record<string, VocCount>>({});
+  // 열려 있는 상자. 둘 다 앱 카드의 버튼에서 엽니다.
+  const [vocApp, setVocApp] = useState<App | null>(null);
+  const [updateApp, setUpdateApp] = useState<App | null>(null);
+  const [me, setMe] = useState<{ user_id: string; is_admin: boolean } | null>(null);
+  // 부서 담당자만 "부서 공통 앱"으로 올릴 수 있습니다.
+  const [manageable, setManageable] = useState<MyDept[]>([]);
 
-  const reload = () =>
-    api
+  const reload = () => {
+    api.vocCounts().then(setCounts).catch(() => undefined);
+    return api
       .listApps()
       .then(setApps)
       .catch((e) => {
         setFailed(true);
         setMessage(String(e));
       });
+  };
 
   useEffect(() => {
+    setMe(getSession());
     reload();
+    api
+      .myDepartments()
+      .then((rows) => setManageable(rows.filter((d) => d.can_manage)))
+      .catch(() => undefined);
   }, []);
 
   const shown = useMemo(() => {
@@ -99,7 +120,11 @@ export default function Store() {
     setMessage("");
     setFailed(false);
     try {
-      const created = await api.registerApp(form);
+      const deptCode = String(form.owner_dept_code || "");
+      const created = await api.registerApp({
+        ...form,
+        visibility: deptCode ? "department" : "private",
+      });
       setFailed(created.status !== "active");
       setMessage(
         created.status === "active"
@@ -172,7 +197,9 @@ export default function Store() {
                 <p className="ui-app__desc">{app.description || app.usage_hint}</p>
                 <div className="ui-app__meta">
                   <Badge tone={GRADE_TONE[app.visibility] ?? "neutral"}>
-                    {LABEL[app.visibility]}
+                    {app.visibility === "department"
+                      ? `부서 공통 · ${app.owner_dept_name || app.owner_dept_code}`
+                      : LABEL[app.visibility]}
                   </Badge>
                   {app.capability_tag && <Tag>역할 {app.capability_tag}</Tag>}
                   <Tag>
@@ -186,8 +213,24 @@ export default function Store() {
                     등록자 {app.owner || app.owner_user_id || "-"}
                     {app.owner_contact && ` · ${app.owner_contact}`}
                   </Tag>
+                  {counts[app.id]?.total ? (
+                    <Tag>
+                      의견 {counts[app.id].total}
+                      {counts[app.id].open ? ` · 안 끝난 ${counts[app.id].open}` : ""}
+                      {counts[app.id].rating ? ` · ★${counts[app.id].rating}` : ""}
+                    </Tag>
+                  ) : null}
                 </div>
                 <Row style={{ marginTop: "var(--space-3)" }}>
+                  <Button variant="ghost" small onClick={() => setVocApp(app)}>
+                    💬 의견
+                    {counts[app.id]?.open ? ` ${counts[app.id].open}` : ""}
+                  </Button>
+                  {(app.owner_user_id === me?.user_id || me?.is_admin) && (
+                    <Button variant="ghost" small onClick={() => setUpdateApp(app)}>
+                      ⬆ 업데이트
+                    </Button>
+                  )}
                   <Button variant="ghost" small onClick={() => api.refreshApp(app.id).then(reload)}>
                     새로고침
                   </Button>
@@ -196,6 +239,32 @@ export default function Store() {
                       공식 등록 신청
                     </Button>
                   )}
+                  {app.visibility === "private" &&
+                    manageable.map((dept) => (
+                      <Button
+                        key={dept.code}
+                        variant="ghost"
+                        small
+                        onClick={() =>
+                          api
+                            .shareAppToDept(app.id, dept.code)
+                            .then(reload)
+                            .catch((e) => setMessage(String(e)))
+                        }
+                      >
+                        {dept.name} 공통으로 내기
+                      </Button>
+                    ))}
+                  {app.visibility === "department" &&
+                    manageable.some((d) => d.code === app.owner_dept_code) && (
+                      <Button
+                        variant="ghost"
+                        small
+                        onClick={() => api.unshareAppFromDept(app.id).then(reload)}
+                      >
+                        부서 공통 해제
+                      </Button>
+                    )}
                 </Row>
               </div>
               <div className="ui-stat">
@@ -252,6 +321,29 @@ export default function Store() {
           {field("owner_contact", "연락처", "메일 또는 사내 메신저")}
           {field("icon", "아이콘")}
 
+          {manageable.length > 0 && (
+            <Field
+              label="누가 쓰는 앱인가요?"
+              hint="부서를 고르면 그 부서에 묶인 사람 모두의 화면에 바로 보입니다"
+              htmlFor="app-dept"
+            >
+              <Select
+                id="app-dept"
+                value={String(form.owner_dept_code ?? "")}
+                onChange={(e) =>
+                  setForm({ ...form, owner_dept_code: e.target.value })
+                }
+              >
+                <option value="">나만 쓰는 앱 (개인용)</option>
+                {manageable.map((dept) => (
+                  <option key={dept.code} value={dept.code}>
+                    {dept.name} 공통 앱
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          )}
+
           <Checkbox
             checked={Boolean(form.requires_confirmation)}
             onChange={(e) =>
@@ -262,6 +354,24 @@ export default function Store() {
 
         </div>
       </Modal>
+
+      {vocApp && (
+        <VocModal
+          app={vocApp}
+          meId={me?.user_id || ""}
+          open
+          onClose={() => setVocApp(null)}
+          onChanged={reload}
+        />
+      )}
+      {updateApp && (
+        <UpdateModal
+          app={updateApp}
+          open
+          onClose={() => setUpdateApp(null)}
+          onUpdated={reload}
+        />
+      )}
     </>
   );
 }

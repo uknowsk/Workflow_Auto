@@ -41,6 +41,7 @@ const LAST_STATUS: Record<string, string> = {
   running: "처리 중",
   queued: "대기 중",
   rejected: "취소됨",
+  canceled: "멈춤",
   awaiting_approval: "확인 필요",
 };
 

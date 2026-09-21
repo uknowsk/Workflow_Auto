@@ -7,6 +7,12 @@ export const API_BASE =
 
 const TOKEN_KEY = "wfa_token";
 const USER_KEY = "wfa_user";
+const ISSUED_KEY = "wfa_token_at";
+
+// 출입증은 2시간짜리입니다. 일하는 도중에 튕기면 안 되므로, 쓰고 있는 동안
+// 절반(1시간)이 지나면 다음 요청에 맞춰 조용히 새로 받아 옵니다.
+// 화면을 닫아 두면 연장되지 않고 2시간 뒤에 죽습니다 - 그게 이 값을 줄인 이유입니다.
+const RENEW_AFTER_MS = 60 * 60 * 1000;
 
 export function getToken(): string {
   if (typeof window === "undefined") return "";
@@ -22,14 +28,43 @@ export function getSession(): { user_id: string; is_admin: boolean } | null {
 export function saveSession(token: string, user_id: string, is_admin: boolean) {
   window.localStorage.setItem(TOKEN_KEY, token);
   window.localStorage.setItem(USER_KEY, JSON.stringify({ user_id, is_admin }));
+  window.localStorage.setItem(ISSUED_KEY, String(Date.now()));
 }
 
 export function clearSession() {
   window.localStorage.removeItem(TOKEN_KEY);
   window.localStorage.removeItem(USER_KEY);
+  window.localStorage.removeItem(ISSUED_KEY);
+}
+
+// 연장은 한 번에 하나만. 화면 여러 개가 동시에 부르면 출입증이 엇갈립니다.
+let renewing: Promise<void> | null = null;
+
+async function renewIfStale() {
+  if (typeof window === "undefined" || !getToken() || renewing) return;
+  const issued = Number(window.localStorage.getItem(ISSUED_KEY) || 0);
+  if (issued && Date.now() - issued < RENEW_AFTER_MS) return;
+
+  renewing = fetch(`${API_BASE}/api/auth/refresh`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${getToken()}` },
+  })
+    .then(async (r) => {
+      if (!r.ok) return; // 연장에 실패해도 하던 일은 계속합니다. 만료되면 그때 로그인 화면으로.
+      const fresh = await r.json();
+      saveSession(fresh.token, fresh.user_id, fresh.is_admin);
+    })
+    .catch(() => undefined)
+    .finally(() => {
+      renewing = null;
+    });
+  await renewing;
 }
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  // 쓰고 있는 동안에만 연장합니다(연장 요청 자신은 여기를 거치지 않습니다).
+  if (!path.startsWith("/api/auth/refresh")) await renewIfStale();
+
   const token = getToken();
   const headers: Record<string, string> = {
     ...(init.body instanceof FormData ? {} : { "Content-Type": "application/json" }),
@@ -73,7 +108,10 @@ export type App = {
   icon: string;
   endpoint: string;
   status: string;
-  visibility: "private" | "pending" | "approved";
+  visibility: "private" | "department" | "pending" | "approved";
+  /** 부서 공통 앱일 때 그 부서 코드와 이름 */
+  owner_dept_code: string;
+  owner_dept_name: string;
   requires_confirmation: boolean;
   runtime_location: "server" | "pc";
   source_type: "manual" | "github" | "zip";
@@ -91,7 +129,30 @@ export type Card = {
   app_ids: string[];
   recipe_id: string | null;
   pinned: boolean;
+  /** 값이 있으면 개인 카드가 아니라 그 부서의 공통 카드입니다 */
+  dept_code: string;
+  dept_name: string;
+  /** 이 사람이 카드를 고치거나 지울 수 있는지 (부서 공통 카드는 담당자만) */
+  editable: boolean;
 };
+
+export type DeptRole = "member" | "manager";
+export type Department = {
+  code: string;
+  name: string;
+  description: string;
+  is_active: boolean;
+  member_count: number;
+  app_count: number;
+  card_count: number;
+};
+export type MyDept = {
+  code: string;
+  name: string;
+  role: DeptRole;
+  can_manage: boolean;
+};
+export type DeptMember = { user_id: string; name: string; role: DeptRole };
 export type RecipeStep = {
   app_id: string;
   app_name: string;
@@ -173,7 +234,8 @@ export type Run = {
     | "running"
     | "succeeded"
     | "failed"
-    | "rejected";
+    | "rejected"
+    | "canceled";
   plan: PlanStep[];
   plan_summary: string;
   needs_approval: boolean;
@@ -208,6 +270,46 @@ export type Usage = {
   all_users?: { total_tokens: number; calls: number };
   by_user?: { user_id: string; total_tokens: number; calls: number }[];
 };
+export type AdminSetting = {
+  key: string;
+  label: string;
+  hint: string;
+  value: number;
+  default: number;
+};
+export type AdminErrors = {
+  days: number;
+  runs: { at: string; user_id: string; request: string; error: string; run_id: string }[];
+  app_calls: {
+    at: string;
+    app: string;
+    tool: string;
+    user_id: string;
+    error: string;
+    app_id: string;
+  }[];
+  apps_down: {
+    app: string;
+    app_id: string;
+    endpoint: string;
+    owner: string;
+    contact: string;
+    failures: number;
+    error: string;
+    last_seen: string;
+  }[];
+};
+export type Account = {
+  user_id: string;
+  name: string;
+  dept: string;
+  contact: string;
+  is_admin: boolean;
+  is_active: boolean;
+  created_at: string | null;
+  last_login_at: string | null;
+  dept_codes: string[];
+};
 export type Notice = {
   id: string;
   kind: string;
@@ -233,6 +335,51 @@ export type DrawingSummary = {
 };
 export type DrawingFull = DrawingSummary & { image: string };
 
+// ── 앱 의견(VOC)과 앱 버전 ──────────────────────────────────────────
+export type VocKind = "bug" | "idea" | "question";
+export type VocStatus = "open" | "in_progress" | "done" | "wontfix";
+export type Voc = {
+  id: string;
+  app_id: string;
+  app_name: string;
+  owner_user_id: string;
+  user_id: string;
+  user_name: string;
+  kind: VocKind;
+  rating: number;
+  title: string;
+  body: string;
+  app_version: string;
+  run_id: string;
+  status: VocStatus;
+  reply: string;
+  replied_by: string;
+  replied_at: string | null;
+  created_at: string;
+};
+/** 앱스토어 목록에 «의견 3» 을 붙이려고 한 번에 세어 오는 값 */
+export type VocCount = {
+  total: number;
+  open: number;
+  rating: number;
+  rating_count: number;
+};
+export type AppVersion = {
+  id: string;
+  app_id: string;
+  version: string;
+  note: string;
+  endpoint: string;
+  source_type: string;
+  source_url: string;
+  source_ref: string;
+  tool_count: number;
+  is_current: boolean;
+  rolled_back_from: string;
+  created_by: string;
+  created_at: string;
+};
+
 export type Me = {
   user_id: string;
   name: string;
@@ -241,6 +388,8 @@ export type Me = {
   is_admin: boolean;
   /** 개인 계정에 저장된 화면 테마 */
   theme: string;
+  /** 내가 묶여 있는 부서들 */
+  depts: MyDept[];
 };
 
 export const api = {
@@ -270,6 +419,36 @@ export const api = {
   rejectApp: (id: string) => request<App>(`/api/apps/${id}/reject`, { method: "POST" }),
   listPending: () => request<App[]>("/api/apps/pending"),
 
+  shareAppToDept: (id: string, dept_code: string) =>
+    request<App>(`/api/apps/${id}/share-dept`, {
+      method: "POST",
+      body: JSON.stringify({ dept_code }),
+    }),
+  unshareAppFromDept: (id: string) =>
+    request<App>(`/api/apps/${id}/unshare-dept`, { method: "POST" }),
+
+  // ── 부서 ─────────────────────────────────────────────────────────
+  listDepartments: () => request<Department[]>("/api/departments"),
+  myDepartments: () => request<MyDept[]>("/api/departments/mine"),
+  createDepartment: (body: { code: string; name: string; description?: string }) =>
+    request<Department>("/api/departments", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  deleteDepartment: (code: string) =>
+    request<void>(`/api/departments/${code}`, { method: "DELETE" }),
+  listDeptMembers: (code: string) =>
+    request<DeptMember[]>(`/api/departments/${code}/members`),
+  addDeptMember: (code: string, user_id: string, role: DeptRole = "member") =>
+    request<DeptMember>(`/api/departments/${code}/members`, {
+      method: "POST",
+      body: JSON.stringify({ user_id, role }),
+    }),
+  removeDeptMember: (code: string, user_id: string) =>
+    request<void>(`/api/departments/${code}/members/${user_id}`, {
+      method: "DELETE",
+    }),
+
   listCards: () => request<Card[]>("/api/cards"),
   createCard: (body: Record<string, unknown>) =>
     request<Card>("/api/cards", { method: "POST", body: JSON.stringify(body) }),
@@ -285,6 +464,7 @@ export const api = {
     request<Run>("/api/runs", { method: "POST", body: JSON.stringify(body) }),
   getRun: (id: string) => request<Run>(`/api/runs/${id}`),
   approveRun: (id: string) => request<Run>(`/api/runs/${id}/approve`, { method: "POST" }),
+  cancelRun: (id: string) => request<Run>(`/api/runs/${id}/cancel`, { method: "POST" }),
   rejectRun: (id: string) => request<Run>(`/api/runs/${id}/reject`, { method: "POST" }),
 
   listRecipes: () => request<Recipe[]>("/api/recipes"),
@@ -324,6 +504,32 @@ export const api = {
   notifications: () => request<Notice[]>("/api/notifications"),
   audit: () => request<Record<string, unknown>[]>("/api/audit?limit=100"),
 
+  // ── 관리자: 최근 오류 · 운영 설정 · 계정 ─────────────────────────
+  adminErrors: (days = 7) => request<AdminErrors>(`/api/admin/errors?days=${days}`),
+  adminSettings: () => request<AdminSetting[]>("/api/admin/settings"),
+  saveAdminSettings: (values: Record<string, number>) =>
+    request<AdminSetting[]>("/api/admin/settings", {
+      method: "PUT",
+      body: JSON.stringify(values),
+    }),
+  cleanupNow: () =>
+    request<{ removed: Record<string, number> }>("/api/admin/cleanup", {
+      method: "POST",
+    }),
+
+  listAccounts: (q = "") =>
+    request<Account[]>(`/api/auth/users?q=${encodeURIComponent(q)}`),
+  updateAccount: (user_id: string, body: Record<string, unknown>) =>
+    request<Account>(`/api/auth/users/${user_id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+  resetPassword: (user_id: string, password: string) =>
+    request<Account>(`/api/auth/users/${user_id}/password`, {
+      method: "POST",
+      body: JSON.stringify({ password }),
+    }),
+
   // ── 도구 서랍 (메모·그림) ────────────────────────────────────────
   listNotes: () => request<Note[]>("/api/tools/notes"),
   createNote: (body: { title: string; body: string; pinned?: boolean }) =>
@@ -335,6 +541,41 @@ export const api = {
     }),
   deleteNote: (id: string) =>
     request<void>(`/api/tools/notes/${id}`, { method: "DELETE" }),
+
+  // ── 앱 의견(VOC) ────────────────────────────────────────────────
+  listAppVoc: (appId: string) => request<Voc[]>(`/api/apps/${appId}/voc`),
+  sendVoc: (
+    appId: string,
+    body: { kind: VocKind; title: string; body?: string; rating?: number; run_id?: string }
+  ) =>
+    request<Voc>(`/api/apps/${appId}/voc`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  vocInbox: (openOnly = false) =>
+    request<Voc[]>(`/api/voc/inbox?open_only=${openOnly}`),
+  vocSent: () => request<Voc[]>("/api/voc/sent"),
+  vocCounts: () => request<Record<string, VocCount>>("/api/voc/counts"),
+  answerVoc: (id: string, body: { status?: VocStatus; reply?: string }) =>
+    request<Voc>(`/api/voc/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  deleteVoc: (id: string) => request<void>(`/api/voc/${id}`, { method: "DELETE" }),
+
+  // ── 앱 업데이트 ─────────────────────────────────────────────────
+  listVersions: (appId: string) => request<AppVersion[]>(`/api/apps/${appId}/versions`),
+  updateEndpoint: (
+    appId: string,
+    body: { endpoint: string; version?: string; note?: string }
+  ) =>
+    request<App>(`/api/apps/${appId}/update/endpoint`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  updateFromGithub: (appId: string, form: FormData) =>
+    request<App>(`/api/apps/${appId}/update/from-github`, { method: "POST", body: form }),
+  updateFromZip: (appId: string, form: FormData) =>
+    request<App>(`/api/apps/${appId}/update/from-zip`, { method: "POST", body: form }),
+  rollbackVersion: (appId: string, versionId: string) =>
+    request<App>(`/api/apps/${appId}/versions/${versionId}/rollback`, { method: "POST" }),
 
   listDrawings: () => request<DrawingSummary[]>("/api/tools/drawings"),
   getDrawing: (id: string) => request<DrawingFull>(`/api/tools/drawings/${id}`),

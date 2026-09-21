@@ -17,6 +17,7 @@ from typing import Any, Callable
 
 from sqlalchemy.orm import Session
 
+from app import departments as dept_service
 from app.config import get_settings
 from app.llm import client as llm
 from app.mcp_client import client as mcp
@@ -139,6 +140,7 @@ def pick_apps(
     user_id: str = "",
     card_app_ids: set[str] | None = None,
     request_text: str = "",
+    my_dept_codes: set[str] | None = None,
 ) -> list[App]:
     """같은 일을 하는 앱이 여러 개면 하나만 남깁니다.
 
@@ -150,11 +152,16 @@ def pick_apps(
       1순위  사용자가 요청문에 앱 이름을 직접 적은 앱
       2순위  사용자가 자기 카드에 넣어 둔 앱
       3순위  사용자 본인이 올린 개인용 앱
-      4순위  관리자가 승인한 공식 앱
+      4순위  사용자가 묶인 부서의 부서 공통 앱
+      5순위  관리자가 승인한 공식 앱
+
+    부서 앱이 공식 앱보다 앞인 이유: 부서에서 일부러 자기 부서용으로 올린 앱은
+    그 부서 사정에 맞춰져 있으니 전사 공통 앱보다 그 부서원에게 더 맞습니다.
 
     태그가 비어 있거나 서로 다르면 경쟁이 아니므로 전부 후보로 둡니다.
     """
     card_app_ids = card_app_ids or set()
+    my_dept_codes = my_dept_codes or set()
     lowered = (request_text or "").lower()
 
     def rank(app: App) -> int:
@@ -166,7 +173,12 @@ def pick_apps(
             return 1
         if user_id and app.owner_user_id == user_id:
             return 2
-        return 3
+        if (
+            app.visibility == AppVisibility.department
+            and app.owner_dept_code in my_dept_codes
+        ):
+            return 3
+        return 4
 
     chosen: dict[str, App] = {}
     passthrough: list[App] = []
@@ -191,15 +203,26 @@ def load_bindings(
     """후보 앱들의 기능을 모아 LLM 도구 목록으로 만듭니다.
 
     오케스트레이터가 부를 수 있는 앱은
-      - 관리자가 승인한 공식 앱(approved) 전부, 그리고
-      - 요청한 본인이 올린 개인용 앱
-    입니다. 남이 올린 개인용 앱은 절대 후보에 들어가지 않습니다.
+      - 관리자가 승인한 공식 앱(approved) 전부,
+      - 요청한 본인이 올린 개인용 앱, 그리고
+      - 요청한 사람이 묶여 있는 부서의 부서 공통 앱
+    입니다. 남이 올린 개인용 앱과 남의 부서 앱은 절대 후보에 들어가지 않습니다.
+    (api/apps.py 의 _visible_filter 와 같은 규칙입니다. 한쪽만 고치면
+    목록에는 안 보이는데 실행은 되는 구멍이 생기니 늘 같이 고치세요.)
     그다음 pick_apps() 로 역할이 겹치는 앱을 하나로 정리합니다.
     """
+    my_codes = set(dept_service.my_dept_codes(db, user_id))
+
     query = db.query(App).filter(App.status == AppStatus.active)
-    query = query.filter(
-        (App.visibility == AppVisibility.approved) | (App.owner_user_id == user_id)
+    visible = (App.visibility == AppVisibility.approved) | (
+        App.owner_user_id == user_id
     )
+    if my_codes:
+        visible = visible | (
+            (App.visibility == AppVisibility.department)
+            & (App.owner_dept_code.in_(my_codes))
+        )
+    query = query.filter(visible)
     if app_ids:
         query = query.filter(App.id.in_(app_ids))
 
@@ -208,6 +231,7 @@ def load_bindings(
         user_id=user_id,
         card_app_ids=set(app_ids or []),
         request_text=request_text,
+        my_dept_codes=my_codes,
     )
 
     bindings: list[ToolBinding] = []
@@ -323,8 +347,14 @@ async def run_request(
     run_id: str = "",
     form_text: str = "",
     on_step: Callable[[list[dict]], None] | None = None,
+    should_stop: Callable[[], bool] | None = None,
 ) -> OrchestrationResult:
-    """자연어 요청 1건을 끝까지 처리합니다."""
+    """자연어 요청 1건을 끝까지 처리합니다.
+
+    should_stop 은 "사용자가 멈춤을 눌렀나?"를 묻는 함수입니다. 앱을 하나 부를
+    때마다 물어봅니다. 이미 시작한 앱 호출을 중간에 끊지는 못하지만, 그다음
+    호출로 넘어가지는 않습니다(반쯤 한 일을 더 늘리지 않으려는 것입니다).
+    """
     bindings = load_bindings(db, app_ids, user_id, request_text)
     by_name = {b.function_name: b for b in bindings}
     tools = to_openai_tools(bindings)
@@ -352,6 +382,11 @@ async def run_request(
     steps: list[Step] = []
 
     for _ in range(settings.llm_max_steps):
+        if should_stop and should_stop():
+            return OrchestrationResult(
+                result_text="", steps=[s.as_dict() for s in steps]
+            )
+
         reply = llm.chat(messages, tools=tools)
         _log_usage(db, reply, user_id, run_id)
 
@@ -363,6 +398,11 @@ async def run_request(
         messages.append(llm.assistant_call_message(reply))
 
         for call in reply["tool_calls"]:
+            if should_stop and should_stop():
+                return OrchestrationResult(
+                    result_text="", steps=[s.as_dict() for s in steps]
+                )
+
             binding = by_name.get(call["name"])
             if binding is None:
                 output, is_error = f"'{call['name']}' 이라는 기능은 없습니다.", True
