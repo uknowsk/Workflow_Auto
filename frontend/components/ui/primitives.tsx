@@ -29,12 +29,15 @@ type ButtonVariant = "primary" | "soft" | "ghost" | "danger";
 export function Button({
   variant = "primary",
   small,
+  tiny,
   block,
   className,
   ...rest
 }: ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: ButtonVariant;
   small?: boolean;
+  /** 제목 옆에 붙일 때. 높이가 글 한 줄(20px)에 맞습니다. */
+  tiny?: boolean;
   block?: boolean;
 }) {
   return (
@@ -47,6 +50,7 @@ export function Button({
         variant === "ghost" && "ui-btn--ghost",
         variant === "danger" && "ui-btn--danger",
         small && "ui-btn--sm",
+        tiny && "ui-btn--xs",
         block && "ui-btn--block",
         className
       )}

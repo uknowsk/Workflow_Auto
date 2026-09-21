@@ -242,23 +242,23 @@ export default function Store() {
                 {/* 설치·빼기는 앱 이름 바로 옆에 둡니다. 아래 줄의 의견·업데이트는
                     앱을 이미 쓰는 사람이 가끔 누르는 것이고, 설치는 목록을 훑다가
                     바로 누르는 것이라 눈이 먼저 닿는 자리에 있어야 합니다. */}
-                <Row nowrap style={{ alignItems: "center" }}>
+                <Row nowrap style={{ alignItems: "center", gap: 6 }}>
                   <h3 className="ui-app__name">{app.name}</h3>
                   {installed[app.id] ? (
                     <>
                       <Button
                         variant="soft"
-                        small
+                        tiny
                         onClick={() => (location.href = `/?card=${installed[app.id]}`)}
                       >
                         열기
                       </Button>
-                      <Button variant="danger" small onClick={() => uninstall(app)}>
+                      <Button variant="danger" tiny onClick={() => uninstall(app)}>
                         삭제
                       </Button>
                     </>
                   ) : (
-                    <Button small onClick={() => install(app)}>
+                    <Button tiny onClick={() => install(app)}>
                       ＋ 설치
                     </Button>
                   )}

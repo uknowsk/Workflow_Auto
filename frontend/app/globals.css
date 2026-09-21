@@ -436,6 +436,16 @@ code {
   padding: 6px var(--space-3);
   font-size: 12px;
 }
+
+/* 제목 옆에 붙는 아주 작은 버튼. 높이를 제목 한 줄(20px)에 딱 맞춰
+   글자 기준선이 제목과 같은 줄에 놓이게 합니다. */
+.ui-btn--xs {
+  height: 20px;
+  padding: 0 9px;
+  font-size: var(--text-xs);
+  border-radius: var(--radius-sm);
+  gap: 4px;
+}
 .ui-btn--block {
   width: 100%;
 }
@@ -725,6 +735,7 @@ code {
   margin: 0;
   font-size: var(--text-base);
   font-weight: 500;
+  line-height: 20px;   /* 옆에 붙는 작은 버튼(.ui-btn--xs)과 같은 높이 */
 }
 .ui-app__desc {
   margin: 3px 0 0;
