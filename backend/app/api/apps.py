@@ -260,21 +260,26 @@ def uninstall_app(
     db.commit()
 
 
-@router.get("/installed/ids", response_model=list[str], summary="내가 설치한 앱 id 목록")
+@router.get(
+    "/installed/ids",
+    response_model=dict[str, str],
+    summary="내가 설치한 앱 → 그 앱의 카드 id",
+)
 def installed_ids(
     db: Session = Depends(get_db), user_id: str = Depends(current_user)
-) -> list[str]:
-    """앱스토어에서 «설치됨» 표시를 하려고 한 번에 가져갑니다."""
-    ids: list[str] = []
+) -> dict[str, str]:
+    """앱스토어의 «열기»가 곧장 그 카드로 갈 수 있게 카드 id 까지 같이 줍니다."""
+    found: dict[str, str] = {}
     for card in (
         db.query(AgentCard)
         .filter(AgentCard.user_id == user_id, AgentCard.dept_code == "")
+        .order_by(AgentCard.created_at)
         .all()
     ):
         app_ids = list(card.app_ids or [])
         if len(app_ids) == 1:
-            ids.append(app_ids[0])
-    return ids
+            found.setdefault(app_ids[0], card.id)
+    return found
 
 
 @router.get("/{app_id}", response_model=AppOut, summary="앱 상세")

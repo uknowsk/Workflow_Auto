@@ -424,7 +424,8 @@ export const api = {
     request<Card>(`/api/apps/${id}/install`, { method: "POST" }),
   uninstallApp: (id: string) =>
     request<void>(`/api/apps/${id}/install`, { method: "DELETE" }),
-  installedAppIds: () => request<string[]>("/api/apps/installed/ids"),
+  /** { 앱 id: 그 앱의 내 카드 id }. «열기»가 그 카드로 바로 가려고 씁니다. */
+  installedAppIds: () => request<Record<string, string>>("/api/apps/installed/ids"),
 
   shareAppToDept: (id: string, dept_code: string) =>
     request<App>(`/api/apps/${id}/share-dept`, {

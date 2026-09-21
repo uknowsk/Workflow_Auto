@@ -84,8 +84,8 @@ export default function Store() {
   const [me, setMe] = useState<{ user_id: string; is_admin: boolean } | null>(null);
   // 부서 담당자만 "부서 공통 앱"으로 올릴 수 있습니다.
   const [manageable, setManageable] = useState<MyDept[]>([]);
-  // 내 에이전트에 담아 둔 앱. 카드에 «✓ 설치됨»을 붙이려고 같이 읽어 옵니다.
-  const [installed, setInstalled] = useState<string[]>([]);
+  // 내 에이전트에 담아 둔 앱 → 그 앱의 카드 id. 카드 id 는 «열기»가 씁니다.
+  const [installed, setInstalled] = useState<Record<string, string>>({});
   // 설치/빼기 결과 한 줄. 등록 상자 안의 message 와 달리 목록 위에 뜹니다.
   const [notice, setNotice] = useState<{ text: string; bad: boolean } | null>(null);
 
@@ -149,8 +149,8 @@ export default function Store() {
   // 앱을 어디로 복사하는 게 아니라서 되돌리기도 카드 한 장 지우기로 끝납니다.
   const install = async (app: App) => {
     try {
-      await api.installApp(app.id);
-      setInstalled((ids) => (ids.includes(app.id) ? ids : [...ids, app.id]));
+      const card = await api.installApp(app.id);
+      setInstalled((ids) => ({ ...ids, [app.id]: card.id }));
       setNotice({
         text:
           app.status === "active"
@@ -166,8 +166,12 @@ export default function Store() {
   const uninstall = async (app: App) => {
     try {
       await api.uninstallApp(app.id);
-      setInstalled((ids) => ids.filter((id) => id !== app.id));
-      setNotice({ text: `«${app.name}»을 내 에이전트에서 뺐습니다.`, bad: false });
+      setInstalled((ids) => {
+        const next = { ...ids };
+        delete next[app.id];
+        return next;
+      });
+      setNotice({ text: `«${app.name}»을 내 에이전트에서 지웠습니다.`, bad: false });
     } catch (e) {
       setNotice({ text: String(e), bad: true });
     }
@@ -190,7 +194,7 @@ export default function Store() {
         <div style={{ minWidth: 0 }}>
           <PageTitle
             title="앱스토어"
-            sub={`등록된 앱 ${apps.length}개 · 설치한 앱 ${installed.length}개 · «＋ 설치»를 누르면 내 에이전트에 카드로 담깁니다`}
+            sub={`등록된 앱 ${apps.length}개 · 설치한 앱 ${Object.keys(installed).length}개 · «＋ 설치»를 누르면 내 에이전트에 카드로 담깁니다`}
           />
         </div>
         <Button
@@ -240,10 +244,19 @@ export default function Store() {
                     바로 누르는 것이라 눈이 먼저 닿는 자리에 있어야 합니다. */}
                 <Row nowrap style={{ alignItems: "center" }}>
                   <h3 className="ui-app__name">{app.name}</h3>
-                  {installed.includes(app.id) ? (
-                    <Button variant="ghost" small onClick={() => uninstall(app)}>
-                      설치 빼기
-                    </Button>
+                  {installed[app.id] ? (
+                    <>
+                      <Button
+                        variant="soft"
+                        small
+                        onClick={() => (location.href = `/?card=${installed[app.id]}`)}
+                      >
+                        열기
+                      </Button>
+                      <Button variant="danger" small onClick={() => uninstall(app)}>
+                        삭제
+                      </Button>
+                    </>
                   ) : (
                     <Button small onClick={() => install(app)}>
                       ＋ 설치
@@ -261,7 +274,7 @@ export default function Store() {
                   <Tag>
                     {app.runtime_location === "pc" ? "💻 개인 PC" : "🖥️ 서버"}
                   </Tag>
-                  {installed.includes(app.id) && <Badge tone="ok">✓ 설치됨</Badge>}
+                  {installed[app.id] && <Badge tone="ok">✓ 설치됨</Badge>}
                   {app.requires_confirmation && (
                     <Badge tone="warn">실행 전 확인</Badge>
                   )}

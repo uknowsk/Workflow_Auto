@@ -62,9 +62,10 @@ def test_설치하면_그_앱만_쓰는_카드가_생깁니다(client):
     assert card["description"] == "이럴 때 씁니다"
 
     assert [c["id"] for c in _cards(client, "E1001")] == [card["id"]]
+    # 앱스토어의 «열기»가 그 카드로 바로 가야 하므로 카드 id 까지 같이 옵니다.
     assert client.get(
         "/api/apps/installed/ids", headers={"X-User-Id": "E1001"}
-    ).json() == [app_id]
+    ).json() == {app_id: card["id"]}
 
 
 def test_두_번_눌러도_카드는_한_장입니다(client):
@@ -103,7 +104,7 @@ def test_빼기는_설치한_카드만_지웁니다(client):
     assert [c["id"] for c in left] == [mine["id"]]
     assert client.get(
         "/api/apps/installed/ids", headers={"X-User-Id": "E1004"}
-    ).json() == []
+    ).json() == {}
 
 
 def test_설치하지_않은_앱을_빼면_404(client):

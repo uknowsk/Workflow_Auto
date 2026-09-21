@@ -409,6 +409,18 @@ code {
   filter: none;
 }
 
+/* 이미 한 번 한 일을 다시 여는 버튼. 예) 설치한 앱의 «열기».
+   채운 초록(설치)과 빨강(삭제) 사이에서 한눈에 구분되도록 연한 초록입니다. */
+.ui-btn--soft {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: var(--accent-line);
+}
+.ui-btn--soft:hover {
+  background: var(--bg);
+  filter: none;
+}
+
 /* 위험한 동작 */
 .ui-btn--danger {
   background: var(--bg);
