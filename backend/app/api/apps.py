@@ -10,7 +10,14 @@ from app.db import get_db
 from app.deps import current_user, is_admin, require_admin
 from app.mcp_client import client as mcp
 from app.models import AgentCard, App, AppStatus, AppTool, AppVisibility
-from app.schemas import AppOut, AppRegisterIn, AppUpdateIn, DeptPublishIn
+from app.api.cards import card_out
+from app.schemas import (
+    AgentCardOut,
+    AppOut,
+    AppRegisterIn,
+    AppUpdateIn,
+    DeptPublishIn,
+)
 
 router = APIRouter(prefix="/api/apps", tags=["앱스토어"])
 settings = get_settings()
@@ -179,6 +186,95 @@ def adoption_stats(db: Session = Depends(get_db), _: str = Depends(require_admin
             }
         )
     return sorted(rows, key=lambda r: r["user_count"], reverse=True)
+
+
+# --------------------------- 설치(내 에이전트에 담기) ---------------------------
+#
+# "설치"는 앱을 어딘가에 복사하는 것이 아닙니다. 앱은 이미 서버에 떠 있고,
+# 설치 = **그 앱 하나만 쓰는 내 카드 한 장**을 만드는 일입니다.
+# 카드에 담긴 앱은 실행할 때 후보 1순위가 되고(orchestrator/engine.py 의
+# pick_apps), 역할이 겹치는 다른 앱을 제치고 그 앱이 쓰입니다.
+#
+# 그래서 "이 앱이 설치되어 있나"의 기준은 **그 앱 하나만 든 내 개인 카드가
+# 있는가** 입니다(여러 앱을 묶어 만든 카드는 사용자가 직접 꾸민 것이므로
+# 설치로 세지도, 빼기로 지우지도 않습니다).
+
+
+def _installed_card(db: Session, app_id: str, user_id: str) -> AgentCard | None:
+    for card in (
+        db.query(AgentCard)
+        .filter(AgentCard.user_id == user_id, AgentCard.dept_code == "")
+        .order_by(AgentCard.created_at)
+        .all()
+    ):
+        if list(card.app_ids or []) == [app_id]:
+            return card
+    return None
+
+
+@router.post(
+    "/{app_id}/install",
+    response_model=AgentCardOut,
+    status_code=201,
+    summary="이 앱을 내 에이전트에 담기(설치)",
+)
+def install_app(
+    app_id: str, db: Session = Depends(get_db), user_id: str = Depends(current_user)
+) -> AgentCardOut:
+    app = _visible_or_404(db, app_id, user_id)
+
+    # 두 번 눌러도 카드가 두 장 생기지 않게, 이미 있으면 그 카드를 그대로 돌려줍니다.
+    existing = _installed_card(db, app_id, user_id)
+    if existing is not None:
+        return card_out(db, existing, user_id)
+
+    card = AgentCard(
+        user_id=user_id,
+        dept_code="",
+        title=app.name,
+        description=app.usage_hint or app.description,
+        icon=app.icon or "🧩",
+        prompt_template="",  # 무엇을 시킬지는 그때그때 다르므로 비워 둡니다.
+        app_ids=[app.id],
+        pinned=False,
+    )
+    db.add(card)
+    db.commit()
+    db.refresh(card)
+    return card_out(db, card, user_id)
+
+
+@router.delete(
+    "/{app_id}/install",
+    status_code=204,
+    response_model=None,
+    summary="설치 빼기(내 에이전트에서 카드 지우기)",
+)
+def uninstall_app(
+    app_id: str, db: Session = Depends(get_db), user_id: str = Depends(current_user)
+) -> None:
+    card = _installed_card(db, app_id, user_id)
+    if card is None:
+        raise HTTPException(404, "내 에이전트에 담아 둔 앱이 아닙니다.")
+    db.delete(card)
+    db.commit()
+
+
+@router.get("/installed/ids", response_model=list[str], summary="내가 설치한 앱 id 목록")
+def installed_ids(
+    db: Session = Depends(get_db), user_id: str = Depends(current_user)
+) -> list[str]:
+    """앱스토어에서 «설치됨» 표시를 하려고 한 번에 가져갑니다."""
+    ids: list[str] = []
+    for card in (
+        db.query(AgentCard)
+        .filter(AgentCard.user_id == user_id, AgentCard.dept_code == "")
+        .all()
+    ):
+        app_ids = list(card.app_ids or [])
+        if len(app_ids) == 1:
+            ids.append(app_ids[0])
+    return ids
 
 
 @router.get("/{app_id}", response_model=AppOut, summary="앱 상세")

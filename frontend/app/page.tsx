@@ -427,7 +427,12 @@ export default function Home() {
                     삭제
                   </Button>
                 </Row>
-                <Muted>{card.prompt_template || "요청문 없음"}</Muted>
+                {/* 앱스토어에서 설치한 카드는 요청문이 없습니다(무엇을 시킬지는
+                    그때그때 다르므로). 대신 앱 설명을 보여 주고, 눌렀을 때
+                    입력칸으로 바로 커서를 옮깁니다. */}
+                <Muted>
+                  {card.prompt_template || card.description || "요청문 없음"}
+                </Muted>
                 <div style={{ marginTop: "var(--space-2)" }}>
                   <Button
                     variant="ghost"
@@ -436,9 +441,12 @@ export default function Home() {
                       setText(card.prompt_template);
                       setCardId(card.id);
                       window.scrollTo({ top: 0, behavior: "smooth" });
+                      if (!card.prompt_template) {
+                        document.getElementById("ask")?.focus();
+                      }
                     }}
                   >
-                    이 카드로 요청
+                    {card.prompt_template ? "이 카드로 요청" : "이 앱에게 시키기"}
                   </Button>
                 </div>
               </Card>

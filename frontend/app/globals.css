@@ -207,6 +207,32 @@ code {
   color: var(--muted);
   font-size: var(--text-sm);
 }
+/* 맨 위 바의 «앱스토어». 아래 메뉴 줄(대시보드·도구 …)은 내 작업 공간이고
+   앱스토어는 거기에 앱을 가져오는 곳이라, 일부러 한 단계 위에 둡니다. */
+.ui-topbar__store {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--ink-2);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  white-space: nowrap;
+}
+.ui-topbar__store:hover {
+  text-decoration: none;
+  border-color: var(--accent);
+  color: var(--ink);
+}
+.ui-topbar__store[aria-current="page"] {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: transparent;
+}
+
 .ui-avatar {
   width: 24px;
   height: 24px;
