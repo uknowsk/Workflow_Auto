@@ -30,6 +30,7 @@ const STATUS_LABEL: Record<Run["status"], string> = {
   succeeded: "완료",
   failed: "실패",
   rejected: "취소함",
+  canceled: "멈춤",
 };
 
 const STATUS_TONE: Record<Run["status"], Tone> = {
@@ -40,7 +41,11 @@ const STATUS_TONE: Record<Run["status"], Tone> = {
   succeeded: "ok",
   failed: "crit",
   rejected: "neutral",
+  canceled: "neutral",
 };
+
+// 아직 끝나지 않아 '멈추기'를 누를 수 있는 상태들.
+const RUNNING: Run["status"][] = ["queued", "planning", "running"];
 
 export default function RunPage() {
   const params = useParams<{ id: string }>();
@@ -66,7 +71,8 @@ export default function RunPage() {
   // 아직 도는 중이면 2초마다 다시 물어봅니다.
   useEffect(() => {
     if (!run) return;
-    if (["succeeded", "failed", "rejected", "awaiting_approval"].includes(run.status)) return;
+    if (["succeeded", "failed", "rejected", "canceled", "awaiting_approval"].includes(run.status))
+      return;
     const timer = setTimeout(load, 2000);
     return () => clearTimeout(timer);
   }, [run, load]);
@@ -91,6 +97,20 @@ export default function RunPage() {
       <PageTitle title="요청 결과" sub={run.request_text} />
       <Row style={{ marginBottom: "var(--space-4)" }}>
         <Badge tone={STATUS_TONE[run.status]}>{STATUS_LABEL[run.status]}</Badge>
+        {RUNNING.includes(run.status) && (
+          <Button
+            variant="ghost"
+            small
+            onClick={() =>
+              api
+                .cancelRun(run.id)
+                .then(setRun)
+                .catch((e) => setError(e instanceof Error ? e.message : String(e)))
+            }
+          >
+            멈추기
+          </Button>
+        )}
         <Link href="/dashboard">← 대시보드로</Link>
       </Row>
 
@@ -142,6 +162,10 @@ export default function RunPage() {
           <SectionHead label="결과" />
           <Lines boxed>{run.result_text}</Lines>
         </Section>
+      )}
+
+      {run.status === "canceled" && (
+        <Muted>멈췄습니다. 이미 끝난 단계까지의 결과만 위에 남아 있습니다.</Muted>
       )}
 
       {run.error && <Alert tone="crit">{run.error}</Alert>}

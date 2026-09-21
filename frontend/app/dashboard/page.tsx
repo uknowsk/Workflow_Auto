@@ -100,7 +100,8 @@ function Widget({ widget }: { widget: DashboardWidget }) {
 function RunLine({ run, onChange }: { run: Run; onChange: (run: Run) => void }) {
   // 끝날 때까지 2초마다 상태만 다시 물어봅니다.
   useEffect(() => {
-    if (["succeeded", "failed", "rejected", "awaiting_approval"].includes(run.status)) return;
+    if (["succeeded", "failed", "rejected", "canceled", "awaiting_approval"].includes(run.status))
+      return;
     const timer = setTimeout(
       () => api.getRun(run.id).then(onChange).catch(() => undefined),
       2000
