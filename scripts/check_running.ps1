@@ -24,9 +24,16 @@ function Bad($m)  { Write-Host "  [안됨] $m" -ForegroundColor Red;   $script:F
 function Note($m) { Write-Host "         $m" -ForegroundColor DarkGray }
 function Section($m) { Write-Host ""; Write-Host "== $m ==" -ForegroundColor Cyan }
 
+# .env 가 없으면 도커 없이 띄운 기록에서 찾습니다(scripts\run_local.ps1 이 남깁니다).
+$EnvFile = '.env'
+$LocalMode = $false
+if (-not (Test-Path $EnvFile)) {
+  if (Test-Path '.local-run\creds') { $EnvFile = '.local-run\creds'; $LocalMode = $true }
+}
+
 $envMap = @{}
-if (Test-Path .env) {
-  foreach ($line in (Get-Content .env -Encoding UTF8)) {
+if (Test-Path $EnvFile) {
+  foreach ($line in (Get-Content $EnvFile -Encoding UTF8)) {
     if ($line -match '^\s*#') { continue }
     $i = $line.IndexOf('=')
     if ($i -gt 0) { $envMap[$line.Substring(0,$i).Trim()] = $line.Substring($i+1).Trim() }
@@ -36,8 +43,11 @@ function Env2($k) { if ($envMap.ContainsKey($k)) { return $envMap[$k] } else { r
 
 # ── 1. 컨테이너 ───────────────────────────────────────────────────
 Section "1. 컨테이너가 다 떴나"
-$psOut = docker compose ps --format '{{.Service}} {{.State}}' 2>$null
-if ($LASTEXITCODE -eq 0 -and $psOut) {
+$psOut = $null
+if (-not $LocalMode) { $psOut = docker compose ps --format '{{.Service}} {{.State}}' 2>$null }
+if ($LocalMode) {
+  Note "도커 없이 띄운 모드입니다(.local-run\). 컨테이너 점검은 건너뜁니다."
+} elseif ($LASTEXITCODE -eq 0 -and $psOut) {
   $lines = @($psOut | Where-Object { $_ })
   $downs = @($lines | Where-Object { $_ -notmatch ' running$' })
   if ($downs.Count -eq 0) { Ok "서비스 $($lines.Count)개가 모두 running" }
@@ -48,6 +58,7 @@ if ($LASTEXITCODE -eq 0 -and $psOut) {
   }
 } else {
   Bad "docker compose ps 가 실패했습니다 — 도커가 켜져 있고 저장소 폴더에서 실행했는지 보세요"
+  Note "도커를 못 쓰는 PC 라면 scripts\run_local.ps1 로 띄우세요."
 }
 
 # ── 2. 백엔드 ─────────────────────────────────────────────────────
@@ -58,7 +69,11 @@ if (-not $health) {
   Bad "$Api/health 에 닿지 않습니다"
   Note "docker compose logs --tail=50 backend   — 설정 점검에 걸려 안 떴을 수 있습니다."
 } else {
+  $errs = @(($health -split ',') | Where-Object { $_ -match 'error' })
   if ($health -match '"status"\s*:\s*"ok"') { Ok "백엔드 정상 (DB·Redis 연결됨)" }
+  elseif ($LocalMode -and ($errs.Count -gt 0) -and -not ($errs | Where-Object { $_ -notmatch 'redis' })) {
+    Ok "백엔드 정상 (DB 연결됨. Redis 는 도커 없이 띄울 때 안 씁니다)"
+  }
   else {
     Bad "백엔드는 떴지만 일부가 안 됩니다:"
     ($health -split ',') | Where-Object { $_ -match 'error' } | ForEach-Object {
@@ -82,7 +97,7 @@ Section "4. 로그인"
 $aid = Env2 'ADMIN_ID'; $apw = Env2 'ADMIN_PASSWORD'
 $token = ''
 if ((-not $aid) -or (-not $apw)) {
-  Bad ".env 에 ADMIN_ID / ADMIN_PASSWORD 가 없어 로그인 확인을 못 합니다"
+  Bad "ADMIN_ID / ADMIN_PASSWORD 를 찾지 못해 로그인 확인을 못 합니다 (.env 또는 .local-run\creds)"
 } else {
   $body = (@{ user_id = $aid; password = $apw } | ConvertTo-Json -Compress)
   try {
@@ -138,7 +153,8 @@ Write-Host ""
 Write-Host "────────────────────────────────────────"
 Write-Host ("  통과 {0} · 안됨 {1}" -f $script:Pass, $script:Fail)
 if ($script:Fail -gt 0) {
-  Write-Host "  전체 로그 한 번에 보기:  docker compose logs --tail=80"
+  if ($LocalMode) { Write-Host "  기록 보기:  .local-run\logs\  (안 뜬 것의 이름 .log 를 여세요)" }
+  else { Write-Host "  전체 로그 한 번에 보기:  docker compose logs --tail=80" }
   Write-Host ""
   exit 1
 }

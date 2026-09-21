@@ -37,3 +37,7 @@ official_apps/data/
 
 # 백업 파일 (서버에만 둡니다)
 backups/
+
+# 도커 없이 띄울 때 쓰는 자리 (scripts/run_local)
+.local-run/
+.venv-local/

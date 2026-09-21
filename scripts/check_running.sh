@@ -26,11 +26,18 @@ bad()  { printf '  [안됨] %s\n' "$*"; FAIL=$((FAIL+1)); }
 note() { printf '         %s\n' "$*"; }
 head_() { printf '\n== %s ==\n' "$*"; }
 
-getenv() { [ -f .env ] || return 0; sed -n "s/^$1=//p" .env | tail -1 | tr -d '\r'; }
+# .env 가 없으면 도커 없이 띄운 기록에서 찾습니다(scripts/run_local.sh 가 남깁니다).
+ENV_FILE=.env
+[ -f "$ENV_FILE" ] || ENV_FILE=.local-run/creds
+LOCAL_MODE=0
+[ "$ENV_FILE" = ".local-run/creds" ] && [ -f "$ENV_FILE" ] && LOCAL_MODE=1
+getenv() { [ -f "$ENV_FILE" ] || return 0; sed -n "s/^$1=//p" "$ENV_FILE" | tail -1 | tr -d '\r'; }
 
 # ── 1. 컨테이너 ─────────────────────────────────────────────────────
 head_ "1. 컨테이너가 다 떴나"
-if docker compose ps --format '{{.Service}} {{.State}}' >/tmp/_wfa_ps 2>/dev/null; then
+if [ "$LOCAL_MODE" = 1 ]; then
+  note "도커 없이 띄운 모드입니다(.local-run/). 컨테이너 점검은 건너뜁니다."
+elif docker compose ps --format '{{.Service}} {{.State}}' >/tmp/_wfa_ps 2>/dev/null; then
   total=$(wc -l </tmp/_wfa_ps | tr -d ' ')
   downs=$(grep -v ' running' /tmp/_wfa_ps || true)
   if [ -z "$downs" ]; then ok "서비스 ${total}개가 모두 running"
@@ -42,6 +49,7 @@ if docker compose ps --format '{{.Service}} {{.State}}' >/tmp/_wfa_ps 2>/dev/nul
   rm -f /tmp/_wfa_ps
 else
   bad "docker compose ps 가 실패했습니다 — 도커가 켜져 있고 저장소 폴더에서 실행했는지 보세요"
+  note "도커를 안 쓰는 PC 라면 bash scripts/run_local.sh 로 띄우세요."
 fi
 
 # ── 2. 백엔드 ───────────────────────────────────────────────────────
@@ -54,8 +62,12 @@ else
   case "$HEALTH" in
     *'"status":"ok"'*) ok "백엔드 정상 (DB·Redis 연결됨)" ;;
     *)
-      bad "백엔드는 떴지만 일부가 안 됩니다:"
-      printf '%s' "$HEALTH" | tr ',' '\n' | grep -i 'error' | tr -d '"{}' | sed 's/^/           /'
+      if [ "$LOCAL_MODE" = 1 ] && ! printf '%s' "$HEALTH" | tr ',' '\n' | grep -i 'error' | grep -qv redis; then
+        ok "백엔드 정상 (DB 연결됨. Redis 는 도커 없이 띄울 때 안 씁니다)"
+      else
+        bad "백엔드는 떴지만 일부가 안 됩니다:"
+        printf '%s' "$HEALTH" | tr ',' '\n' | grep -i 'error' | tr -d '"{}' | sed 's/^/           /'
+      fi
       ;;
   esac
   printf '           %s\n' "$(printf '%s' "$HEALTH" | tr ',' '\n' | grep -i 'llm_' | tr -d '"{}' | tr '\n' ' ')"
@@ -72,7 +84,7 @@ head_ "4. 로그인"
 AID=$(getenv ADMIN_ID); APW=$(getenv ADMIN_PASSWORD)
 TOKEN=""
 if [ -z "$AID" ] || [ -z "$APW" ]; then
-  bad ".env 에 ADMIN_ID / ADMIN_PASSWORD 가 없어 로그인 확인을 못 합니다"
+  bad "ADMIN_ID / ADMIN_PASSWORD 를 찾지 못해 로그인 확인을 못 합니다 (.env 또는 .local-run/creds)"
 else
   RESP=$(curl -sS --max-time 15 -X POST "$API/api/auth/login" \
     -H 'Content-Type: application/json' \
@@ -121,7 +133,11 @@ done
 printf '\n────────────────────────────────────────\n'
 printf '  통과 %d · 안됨 %d\n' "$PASS" "$FAIL"
 if [ "$FAIL" -gt 0 ]; then
-  printf '  전체 로그 한 번에 보기:  docker compose logs --tail=80\n\n'
+  if [ "$LOCAL_MODE" = 1 ]; then
+    printf '  기록 보기:  .local-run/logs/  (안 뜬 것의 이름 .log 를 여세요)\n\n'
+  else
+    printf '  전체 로그 한 번에 보기:  docker compose logs --tail=80\n\n'
+  fi
   exit 1
 fi
 printf '  다 떴습니다. 브라우저로 %s 접속해서 로그인해 보세요.\n\n' "$WEB"
