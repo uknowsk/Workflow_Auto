@@ -1,5 +1,8 @@
 # 집에서 만들고 회사에서 이어가기
 
+> **그냥 "회사 PC 에서 뜨는지만" 보고 싶다면** → [COMPANY_CHECK.md](COMPANY_CHECK.md)
+> (가져오기 → 점검 → 띄우기 → 확인, 네 걸음. 점검·확인은 스크립트 한 줄입니다.)
+
 집(이 GitHub 저장소)에서 만든 것을 회사로 가져가서 이어 개발합니다.
 **회사 코드는 집으로 돌아올 수 없으므로**, 회사에서 덧붙이는 것이
 공통 코어를 건드리지 않도록 처음부터 갈라 두었습니다.
@@ -31,9 +34,18 @@ cp config/profiles/company.env.example .env
 # 4) 사내 앱 목록 파일을 만듭니다
 cp config/apps.seed.example.json config/apps.seed.json
 
-# 5) 실행
+# 5) 띄우기 전에 점검 — 빠진 프로그램·미러·설정을 한 번에 찍어 줍니다
+bash scripts/check_ready.sh            # Windows: scripts\check_ready.ps1
+
+# 6) 실행
 docker compose up -d --build
+
+# 7) 제대로 떴는지 확인
+bash scripts/check_running.sh          # Windows: scripts\check_running.ps1
 ```
+
+점검 스크립트가 무엇을 보는지와 자주 걸리는 것들은
+[COMPANY_CHECK.md](COMPANY_CHECK.md) 에 정리해 두었습니다.
 
 ## .env 에서 회사가 채워야 할 값
 
