@@ -40,20 +40,47 @@ head_ "1. 필요한 프로그램"
 if command -v git >/dev/null 2>&1; then ok "git $(git --version | awk '{print $3}')"
 else bad "git 이 없습니다"; note "사내 소프트웨어 센터에서 Git 을 설치하세요."; fi
 
-if command -v docker >/dev/null 2>&1; then ok "docker $(docker --version | awk '{print $3}' | tr -d ,)"
+HAVE_DOCKER=0
+if command -v docker >/dev/null 2>&1; then
+  HAVE_DOCKER=1
+  ok "docker $(docker --version | awk '{print $3}' | tr -d ,)"
 else
-  bad "docker 가 없습니다"
-  note "Docker Desktop(Windows/Mac) 또는 docker engine(리눅스)이 필요합니다."
-  note "사내 보안망에서는 사내 소프트웨어 센터 / IT 헬프데스크를 통해 설치합니다."
+  warn "docker 가 없습니다"
+  note "Docker Desktop 은 WSL2 나 Hyper-V 가 있어야 돕니다. 사내 정책으로 그게 막혀 있으면"
+  note "설치해도 못 씁니다. 그럴 때는 도커 없이 띄우세요:  bash scripts/run_local.sh"
+  note "(Python 3.11+ 와 Node 20+ 만 있으면 됩니다. 바로 아래에서 확인합니다)"
 fi
 
-if docker compose version >/dev/null 2>&1; then ok "docker compose $(docker compose version --short 2>/dev/null)"
-else bad "docker compose(v2) 가 없습니다"; note "Docker Desktop 최신판에는 들어 있습니다."; fi
+if [ "$HAVE_DOCKER" = 1 ]; then
+  if docker compose version >/dev/null 2>&1; then ok "docker compose $(docker compose version --short 2>/dev/null)"
+  else bad "docker compose(v2) 가 없습니다"; note "Docker Desktop 최신판에는 들어 있습니다."; fi
 
-if docker info >/dev/null 2>&1; then ok "도커가 실행 중입니다"
+  if docker info >/dev/null 2>&1; then ok "도커가 실행 중입니다"
+  else
+    bad "도커가 실행되고 있지 않습니다"
+    note "Docker Desktop 을 켜고 고래 아이콘이 'Running' 이 된 뒤 다시 실행하세요."
+  fi
+fi
+
+# 도커가 없으면 이 둘만 있으면 띄울 수 있습니다(scripts/run_local.sh).
+PYOK=0
+for c in python3.13 python3.12 python3.11 python3 python; do
+  command -v "$c" >/dev/null 2>&1 || continue
+  v=$("$c" -c 'import sys;print(sys.version_info[0]*100+sys.version_info[1])' 2>/dev/null)
+  if [ -n "$v" ] && [ "$v" -ge 311 ]; then PYOK=1; ok "python $("$c" --version 2>&1 | awk '{print $2}')"; break; fi
+done
+if [ "$PYOK" = 0 ]; then
+  [ "$HAVE_DOCKER" = 1 ] && warn "Python 3.11 이상이 없습니다 (도커로 띄우면 없어도 됩니다)" \
+                          || bad "Python 3.11 이상이 없습니다 — 도커가 없으니 이건 꼭 필요합니다"
+fi
+
+if command -v node >/dev/null 2>&1 && [ "$(node --version | sed 's/^v//' | cut -d. -f1)" -ge 20 ]; then
+  ok "node $(node --version)"
+elif command -v node >/dev/null 2>&1; then
+  warn "node $(node --version) — 20 이상이 필요합니다"
 else
-  bad "도커가 실행되고 있지 않습니다"
-  note "Docker Desktop 을 켜고 고래 아이콘이 'Running' 이 된 뒤 다시 실행하세요."
+  [ "$HAVE_DOCKER" = 1 ] && warn "Node.js 가 없습니다 (도커로 띄우면 없어도 됩니다)" \
+                          || bad "Node.js 20 이상이 없습니다 — 도커가 없으니 이건 꼭 필요합니다"
 fi
 
 # ── 2. 디스크 여유 ──────────────────────────────────────────────────
@@ -73,6 +100,9 @@ if [ ! -f .env ]; then
     cp config/profiles/company.env.example .env
     ok ".env 를 회사 프로필에서 만들었습니다"
     note "열어서 값을 채운 뒤 이 스크립트를 다시 실행하세요."
+  elif [ "$HAVE_DOCKER" = 0 ]; then
+    warn ".env 가 없습니다 (도커 없이 띄우는 scripts/run_local.sh 는 없어도 됩니다)"
+    note "사내 미러 주소를 넣어야 한다면:  cp config/profiles/company.env.example .env"
   else
     bad ".env 가 없습니다"
     note "cp config/profiles/company.env.example .env   (또는 --fix 옵션)"
@@ -169,7 +199,9 @@ else bad "NPM_REGISTRY 가 비어 있고 registry.npmjs.org 에도 닿지 않습
 # ── 5. 도커 이미지 ──────────────────────────────────────────────────
 head_ "5. 도커 기본 이미지"
 IMAGES="python:3.11-slim node:20-alpine postgres:16-alpine redis:7-alpine"
-if docker info >/dev/null 2>&1; then
+if [ "$HAVE_DOCKER" = 0 ]; then
+  note "도커가 없어 건너뜁니다. scripts/run_local.sh 로 띄우면 이미지는 필요 없습니다."
+elif docker info >/dev/null 2>&1; then
   for img in $IMAGES; do
     if docker image inspect "$img" >/dev/null 2>&1; then ok "$img (이미 받아 둠)"
     elif [ "$DEEP" = 1 ]; then
@@ -212,5 +244,9 @@ if [ "$FAIL" -gt 0 ]; then
   printf '  [막힘] 을 먼저 해결하세요. 그대로 두면 기동 중에 멈춥니다.\n\n'
   exit 1
 fi
-printf '  다음 단계:  docker compose up -d --build\n'
+if [ "$HAVE_DOCKER" = 1 ]; then
+  printf '  다음 단계:  docker compose up -d --build\n'
+else
+  printf '  다음 단계:  bash scripts/run_local.sh      (도커 없이 띄웁니다)\n'
+fi
 printf '  띄운 뒤   :  bash scripts/check_running.sh\n\n'

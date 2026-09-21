@@ -47,14 +47,17 @@ Section "1. 필요한 프로그램"
 if (Have 'git') { Ok ("git " + ((git --version) -split ' ')[2]) }
 else { Bad "git 이 없습니다"; TryWinget 'Git.Git' 'Git' }
 
-if (Have 'docker') { Ok ("docker " + (((docker --version) -split ' ')[2] -replace ',','')) }
+$script:HaveDocker = [bool](Have 'docker')
+if ($script:HaveDocker) { Ok ("docker " + (((docker --version) -split ' ')[2] -replace ',','')) }
 else {
-  Bad "docker 가 없습니다"
-  Note "Docker Desktop 이 필요합니다. 사내 보안망에서는 보통 사내 소프트웨어 센터로 설치합니다."
-  TryWinget 'Docker.DockerDesktop' 'Docker Desktop'
+  Warn "docker 가 없습니다"
+  Note "Docker Desktop 은 WSL2 나 Hyper-V 가 있어야 돕니다. 사내 정책으로 그게 막혀 있으면"
+  Note "설치해도 못 씁니다. 그럴 때는 도커 없이 띄우세요:"
+  Note "  powershell -ExecutionPolicy Bypass -File scripts\run_local.ps1"
+  Note "(Python 3.11+ 와 Node 20+ 만 있으면 됩니다. 바로 아래에서 확인합니다)"
 }
 
-if (Have 'docker') {
+if ($script:HaveDocker) {
   docker compose version 2>&1 | Out-Null
   if ($LASTEXITCODE -eq 0) { Ok ("docker compose " + (docker compose version --short 2>$null)) }
   else { Bad "docker compose(v2) 가 없습니다 — Docker Desktop 최신판에는 들어 있습니다" }
@@ -66,6 +69,31 @@ if (Have 'docker') {
     Note "시작 메뉴에서 Docker Desktop 을 켜고, 고래 아이콘이 'Running' 이 된 뒤 다시 실행하세요."
     Note "(npipe... 오류가 바로 이 경우입니다)"
   }
+}
+
+# 도커가 없으면 이 둘만 있으면 띄울 수 있습니다(scripts\run_local.ps1).
+$pyFound = $null
+foreach ($c in @('python','python3','py')) {
+  if (-not (Have $c)) { continue }
+  $v = & $c -c "import sys;print(sys.version_info[0]*100+sys.version_info[1])" 2>$null
+  if ($v -and [int]$v -ge 311) { $pyFound = $c; break }
+}
+if ($pyFound) { Ok ("python " + ((& $pyFound --version 2>&1) -split ' ')[1]) }
+elseif ($script:HaveDocker) { Warn "Python 3.11 이상이 없습니다 (도커로 띄우면 없어도 됩니다)" }
+else {
+  Bad "Python 3.11 이상이 없습니다 — 도커가 없으니 이건 꼭 필요합니다"
+  TryWinget 'Python.Python.3.12' 'Python 3.12'
+}
+
+if (Have 'node') {
+  $nodeMajor = [int]((node --version) -replace '^v','' -split '\.')[0]
+  if ($nodeMajor -ge 20) { Ok ("node " + (node --version)) }
+  else { Warn ("node " + (node --version) + " — 20 이상이 필요합니다") }
+}
+elseif ($script:HaveDocker) { Warn "Node.js 가 없습니다 (도커로 띄우면 없어도 됩니다)" }
+else {
+  Bad "Node.js 20 이상이 없습니다 — 도커가 없으니 이건 꼭 필요합니다"
+  TryWinget 'OpenJS.NodeJS.LTS' 'Node.js LTS'
 }
 
 # ── 2. 디스크 여유 ────────────────────────────────────────────────
@@ -85,6 +113,9 @@ if (-not (Test-Path .env)) {
     Copy-Item config/profiles/company.env.example .env
     Ok ".env 를 회사 프로필에서 만들었습니다"
     Note "메모장으로 열어서 값을 채운 뒤 이 스크립트를 다시 실행하세요."
+  } elseif (-not $script:HaveDocker) {
+    Warn ".env 가 없습니다 (도커 없이 띄우는 scripts\run_local.ps1 은 없어도 됩니다)"
+    Note "사내 미러 주소를 넣어야 한다면:  copy config\profiles\company.env.example .env"
   } else {
     Bad ".env 가 없습니다"
     Note "copy config\profiles\company.env.example .env   (또는 -Fix 옵션)"
@@ -195,8 +226,8 @@ else { Bad "NPM_REGISTRY 가 비어 있고 registry.npmjs.org 에도 닿지 않�
 # ── 5. 도커 기본 이미지 ───────────────────────────────────────────
 Section "5. 도커 기본 이미지"
 $images = @('python:3.11-slim','node:20-alpine','postgres:16-alpine','redis:7-alpine')
-docker info 2>&1 | Out-Null
-if ($LASTEXITCODE -eq 0) {
+if (-not $script:HaveDocker) { $LASTEXITCODE = 1 } else { docker info 2>&1 | Out-Null }
+if ($script:HaveDocker -and $LASTEXITCODE -eq 0) {
   foreach ($img in $images) {
     docker image inspect $img 2>&1 | Out-Null
     if ($LASTEXITCODE -eq 0) { Ok "$img (이미 받아 둠)" }
@@ -218,6 +249,8 @@ if ($LASTEXITCODE -eq 0) {
       Note "IT 에 'PyPI 미러에 cryptography 44.0.0 을 올려 달라'고 요청하세요."
     }
   }
+} elseif (-not $script:HaveDocker) {
+  Note "도커가 없어 건너뜁니다. scripts\run_local.ps1 로 띄우면 이미지는 필요 없습니다."
 } else { Warn "도커가 꺼져 있어 이미지 확인을 건너뜁니다" }
 
 # ── 6. 포트 ───────────────────────────────────────────────────────
@@ -239,6 +272,7 @@ if ($script:Fail -gt 0) {
   Write-Host ""
   exit 1
 }
-Write-Host "  다음 단계:  docker compose up -d --build"
+if ($script:HaveDocker) { Write-Host "  다음 단계:  docker compose up -d --build" }
+else { Write-Host "  다음 단계:  powershell -ExecutionPolicy Bypass -File scripts\run_local.ps1   (도커 없이 띄웁니다)" }
 Write-Host "  띄운 뒤   :  powershell -ExecutionPolicy Bypass -File scripts\check_running.ps1"
 Write-Host ""

@@ -340,6 +340,10 @@ GitHub·ZIP 으로 올릴 때는 패키지 안에 `workflow_app.json` 을 넣어
 **[docs/COMPANY_CHECK.md](docs/COMPANY_CHECK.md)** 가 더 짧습니다. 점검과 확인은
 스크립트 한 줄입니다(`scripts/check_ready`, `scripts/check_running` — Windows 는 `.ps1`).
 
+**Docker Desktop 을 못 쓰는 PC**(사내 정책으로 WSL2·Hyper-V 가 막힌 경우)에서는
+`scripts/run_local` 로 도커 없이 띄울 수 있습니다. Python 3.11+ 과 Node 20+ 만 있으면
+되고, DB 는 SQLite 파일 하나를 씁니다. "계획 세우기"(Redis 필요)만 빼고 다 됩니다.
+
 핵심은 하나입니다. **회사에서만 아는 값은 전부 `.env` 와 `config/` 에 있고,
 코드는 집과 회사가 같습니다.**
 
