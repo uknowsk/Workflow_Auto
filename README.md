@@ -336,6 +336,10 @@ GitHub·ZIP 으로 올릴 때는 패키지 안에 `workflow_app.json` 을 넣어
 집에서 만든 것을 회사로 가져가 이어가는 방법, 그리고 폐쇄망 확인 사항은
 **[docs/DEPLOY_COMPANY.md](docs/DEPLOY_COMPANY.md)** 에 정리해 두었습니다.
 
+회사 PC 에서 **한 번 띄워 보기만** 할 거라면
+**[docs/COMPANY_CHECK.md](docs/COMPANY_CHECK.md)** 가 더 짧습니다. 점검과 확인은
+스크립트 한 줄입니다(`scripts/check_ready`, `scripts/check_running` — Windows 는 `.ps1`).
+
 핵심은 하나입니다. **회사에서만 아는 값은 전부 `.env` 와 `config/` 에 있고,
 코드는 집과 회사가 같습니다.**
 
