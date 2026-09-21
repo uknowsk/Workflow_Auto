@@ -235,7 +235,21 @@ export default function Store() {
             <div className="ui-app" key={app.id}>
               <IconTile large>{app.icon || "🧩"}</IconTile>
               <div>
-                <h3 className="ui-app__name">{app.name}</h3>
+                {/* 설치·빼기는 앱 이름 바로 옆에 둡니다. 아래 줄의 의견·업데이트는
+                    앱을 이미 쓰는 사람이 가끔 누르는 것이고, 설치는 목록을 훑다가
+                    바로 누르는 것이라 눈이 먼저 닿는 자리에 있어야 합니다. */}
+                <Row nowrap style={{ alignItems: "center" }}>
+                  <h3 className="ui-app__name">{app.name}</h3>
+                  {installed.includes(app.id) ? (
+                    <Button variant="ghost" small onClick={() => uninstall(app)}>
+                      설치 빼기
+                    </Button>
+                  ) : (
+                    <Button small onClick={() => install(app)}>
+                      ＋ 설치
+                    </Button>
+                  )}
+                </Row>
                 <p className="ui-app__desc">{app.description || app.usage_hint}</p>
                 <div className="ui-app__meta">
                   <Badge tone={GRADE_TONE[app.visibility] ?? "neutral"}>
@@ -265,15 +279,6 @@ export default function Store() {
                   ) : null}
                 </div>
                 <Row style={{ marginTop: "var(--space-3)" }}>
-                  {installed.includes(app.id) ? (
-                    <Button variant="ghost" small onClick={() => uninstall(app)}>
-                      설치 빼기
-                    </Button>
-                  ) : (
-                    <Button small onClick={() => install(app)}>
-                      ＋ 설치
-                    </Button>
-                  )}
                   <Button variant="ghost" small onClick={() => setVocApp(app)}>
                     💬 의견
                     {counts[app.id]?.open ? ` ${counts[app.id].open}` : ""}
