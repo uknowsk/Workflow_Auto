@@ -3,38 +3,15 @@
 // 세계 시계 + 회의 시간 맞추기.
 //
 // 브라우저가 들고 있는 시간대 정보(Intl)를 씁니다. 바깥에서 받아오는 것이 없습니다.
-// 도시 목록은 백엔드 "도구 모음" 앱과 같은 곳을 씁니다.
+// 도시 목록은 백엔드 "도구 모음" 앱과 같은 곳을 씁니다. (city-zones.ts 참고)
 
-import { useEffect, useMemo, useState } from "react";
-import { Badge, Button, Field, Input, Muted, Row, Select } from "@/components/ui";
-
-const CITY_ZONES: Record<string, string> = {
-  서울: "Asia/Seoul",
-  수원: "Asia/Seoul",
-  도쿄: "Asia/Tokyo",
-  베이징: "Asia/Shanghai",
-  상하이: "Asia/Shanghai",
-  시안: "Asia/Shanghai",
-  호치민: "Asia/Ho_Chi_Minh",
-  하노이: "Asia/Ho_Chi_Minh",
-  델리: "Asia/Kolkata",
-  벵갈루루: "Asia/Kolkata",
-  두바이: "Asia/Dubai",
-  런던: "Europe/London",
-  파리: "Europe/Paris",
-  프랑크푸르트: "Europe/Berlin",
-  바르샤바: "Europe/Warsaw",
-  모스크바: "Europe/Moscow",
-  뉴욕: "America/New_York",
-  오스틴: "America/Chicago",
-  산호세: "America/Los_Angeles",
-  샌프란시스코: "America/Los_Angeles",
-  상파울루: "America/Sao_Paulo",
-  시드니: "Australia/Sydney",
-};
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Badge, Button, Field, Input, Muted, Row } from "@/components/ui";
+import { CITY_ZONES, City, searchCities } from "./city-zones";
 
 const DEFAULT_CITIES = ["서울", "프랑크푸르트", "오스틴", "샌프란시스코"];
 const STORE_KEY = "wfa_tool_clock_cities";
+const SUGGEST_LIMIT = 8;
 
 /** 그 도시의 '지금'(또는 주어진 시각)을 부분별로 읽습니다. */
 function partsIn(zone: string, at: Date) {
@@ -67,12 +44,34 @@ function offsetFromSeoul(zone: string, at: Date): number {
   return Math.round(((read(zone) - read("Asia/Seoul")) / 3600000) * 10) / 10;
 }
 
+/** "서울 +8시간" 처럼 읽기 쉽게. */
+function gapLabel(offset: number): string {
+  if (offset === 0) return "서울과 같음";
+  return `서울 ${offset > 0 ? "+" : ""}${offset}시간`;
+}
+
+/** Asia/Seoul 같은 표준 이름을 직접 쳤을 때도 받아 줍니다. */
+function asRawZone(text: string): City | null {
+  const zone = text.trim();
+  if (!zone.includes("/")) return null;
+  try {
+    new Intl.DateTimeFormat("ko-KR", { timeZone: zone }).format(new Date());
+  } catch {
+    return null;
+  }
+  return { name: zone, en: zone, country: "표준 시간대", zone };
+}
+
 export default function WorldClock() {
   const [now, setNow] = useState(() => new Date());
   const [cities, setCities] = useState<string[]>(DEFAULT_CITIES);
-  const [adding, setAdding] = useState("");
+  // 도시 고르기: 친 글자와 맞는 후보를 아래에 펼쳐 보여 줍니다.
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+  const [cursor, setCursor] = useState(0);
   // 회의 시간 맞추기: 서울 기준 시각을 넣으면 다른 도시가 몇 시인지 봅니다.
   const [meetingAt, setMeetingAt] = useState("");
+  const pickerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     try {
@@ -87,6 +86,16 @@ export default function WorldClock() {
     const timer = window.setInterval(() => setNow(new Date()), 1000);
     return () => window.clearInterval(timer);
   }, []);
+
+  // 후보 목록 밖을 누르면 닫습니다.
+  useEffect(() => {
+    if (!open) return;
+    const close = (event: MouseEvent) => {
+      if (!pickerRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [open]);
 
   const save = (next: string[]) => {
     setCities(next);
@@ -125,7 +134,39 @@ export default function WorldClock() {
     };
   });
 
-  const unused = Object.keys(CITY_ZONES).filter((city) => !cities.includes(city));
+  // 후보는 목록에 없는 도시만. 못 찾으면 표준 시간대 이름으로도 받아 봅니다.
+  const matches = useMemo(() => {
+    const found = searchCities(query, cities).slice(0, SUGGEST_LIMIT);
+    if (found.length) return found;
+    const raw = asRawZone(query);
+    return raw && !cities.includes(raw.name) ? [raw] : [];
+  }, [query, cities]);
+
+  const add = (city: City) => {
+    if (!cities.includes(city.name)) save([...cities, city.name]);
+    setQuery("");
+    setCursor(0);
+    setOpen(false);
+  };
+
+  const onKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Escape") {
+      setOpen(false);
+      return;
+    }
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      setOpen(true);
+      if (!matches.length) return;
+      const step = event.key === "ArrowDown" ? 1 : matches.length - 1;
+      setCursor((at_) => (at_ + step) % matches.length);
+      return;
+    }
+    if (event.key === "Enter" && open && matches[cursor]) {
+      event.preventDefault();
+      add(matches[cursor]);
+    }
+  };
 
   return (
     <div className="tool-clock">
@@ -152,11 +193,7 @@ export default function WorldClock() {
             <Badge tone={row.business ? "ok" : row.weekend ? "neutral" : "warn"}>
               {row.business ? "근무 중" : row.weekend ? "주말" : "근무 시간 아님"}
             </Badge>
-            <Muted>
-              {row.offset === 0
-                ? "서울과 같음"
-                : `서울 ${row.offset > 0 ? "+" : ""}${row.offset}시간`}
-            </Muted>
+            <Muted>{gapLabel(row.offset)}</Muted>
             <Button
               variant="ghost"
               small
@@ -168,24 +205,63 @@ export default function WorldClock() {
         ))}
       </div>
 
-      <Row nowrap>
-        <Select value={adding} onChange={(event) => setAdding(event.target.value)}>
-          <option value="">도시 고르기</option>
-          {unused.map((city) => (
-            <option key={city}>{city}</option>
-          ))}
-        </Select>
-        <Button
-          small
-          disabled={!adding}
-          onClick={() => {
-            if (adding) save([...cities, adding]);
-            setAdding("");
+      <div className="tool-clock__pick" ref={pickerRef}>
+        <Input
+          value={query}
+          placeholder="도시 고르기 (도시·나라·영문 이름을 쳐 보세요)"
+          role="combobox"
+          aria-expanded={open && matches.length > 0}
+          aria-controls="tool-clock-suggest"
+          aria-autocomplete="list"
+          aria-activedescendant={
+            open && matches[cursor] ? `tool-clock-city-${cursor}` : undefined
+          }
+          onFocus={() => setOpen(true)}
+          onChange={(event) => {
+            setQuery(event.target.value);
+            setCursor(0);
+            setOpen(true);
           }}
-        >
-          추가
-        </Button>
-      </Row>
+          onKeyDown={onKeyDown}
+        />
+
+        {open && matches.length > 0 && (
+          <ul className="tool-clock__suggest" id="tool-clock-suggest" role="listbox">
+            {matches.map((city, index) => (
+              <li
+                key={city.name}
+                id={`tool-clock-city-${index}`}
+                role="option"
+                aria-selected={index === cursor}
+                className={
+                  index === cursor
+                    ? "tool-clock__option tool-clock__option--on"
+                    : "tool-clock__option"
+                }
+                onMouseEnter={() => setCursor(index)}
+                onMouseDown={(event) => {
+                  event.preventDefault();
+                  add(city);
+                }}
+              >
+                <span className="tool-clock__option-name">{city.name}</span>
+                <span className="tool-clock__option-sub">
+                  {city.en} · {city.country}
+                </span>
+                <span className="tool-clock__option-gap">
+                  {gapLabel(offsetFromSeoul(city.zone, now))}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {open && query.trim() && matches.length === 0 && (
+          <div className="tool-clock__suggest tool-clock__suggest--empty">
+            <Muted>맞는 도시가 없습니다. Asia/Seoul 같은 표준 이름도 됩니다.</Muted>
+          </div>
+        )}
+      </div>
 
       <Muted>고른 도시는 이 브라우저에 기억해 둡니다.</Muted>
     </div>

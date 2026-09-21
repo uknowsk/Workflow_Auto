@@ -16,6 +16,7 @@
   Schedule    : 시간이 되면 스스로 실행되는 예약
   AppFeedback : 앱을 써 본 사람이 등록자에게 남긴 의견(VOC)
   AppVersion  : 앱을 새 버전으로 올린 이력 (되돌리기용)
+  AdminSetting: 관리자가 화면에서 바꾸는 값 (보관 기간, Gauss 한도)
 """
 from __future__ import annotations
 
@@ -36,6 +37,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app import crypto
 from app.db import Base
 
 
@@ -85,6 +87,7 @@ class RunStatus(str, enum.Enum):
     succeeded = "succeeded"
     failed = "failed"
     rejected = "rejected"                  # 사용자가 계획을 거부함
+    canceled = "canceled"                  # 사용자가 도중에 멈춤
 
 
 class App(Base):
@@ -143,7 +146,20 @@ class App(Base):
     # 이런 앱이 계획에 끼면 오케스트레이터가 실행 전에 사용자에게 확인을 받습니다.
     requires_confirmation: Mapped[bool] = mapped_column(Boolean, default=False)
     # 사내 인증이 필요하면 헤더로 넣습니다. 예) {"Authorization": "Bearer ..."}
-    auth_headers: Mapped[dict] = mapped_column(JSON, default=dict)
+    # DB 에는 잠긴 채로 들어갑니다(app/crypto.py). 코드에서는 아래 auth_headers
+    # 로 평소처럼 읽고 쓰면 되고, 잠그고 푸는 일은 알아서 일어납니다.
+    auth_headers_sealed: Mapped[dict] = mapped_column(
+        "auth_headers", JSON, default=dict
+    )
+
+    @property
+    def auth_headers(self) -> dict:
+        """앱을 부를 때 붙일 헤더. 읽는 순간 풉니다."""
+        return crypto.unseal(self.auth_headers_sealed)
+
+    @auth_headers.setter
+    def auth_headers(self, value: dict | None) -> None:
+        self.auth_headers_sealed = crypto.seal(value)
 
     status: Mapped[AppStatus] = mapped_column(
         Enum(AppStatus, native_enum=False), default=AppStatus.active
@@ -461,6 +477,22 @@ class LlmUsage(Base):
     period: Mapped[str] = mapped_column(String(7), index=True, default="")  # YYYY-MM
     day: Mapped[str] = mapped_column(String(10), index=True, default="")    # YYYY-MM-DD
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class AdminSetting(Base):
+    """관리자가 화면에서 바꾸는 값 하나(보관 기간, Gauss 한도 등).
+
+    어떤 값이 있는지와 기본값은 app/settings_store.py 에 적혀 있습니다.
+    여기에는 "기본값과 달라진 것"만 줄로 남습니다.
+    """
+
+    __tablename__ = "admin_settings"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[str] = mapped_column(String(64), default="")
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_now, onupdate=_now
+    )
 
 
 class Notification(Base):

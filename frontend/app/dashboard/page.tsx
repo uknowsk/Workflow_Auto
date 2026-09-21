@@ -44,6 +44,7 @@ const RUN_LABEL: Record<string, string> = {
   succeeded: "완료",
   failed: "실패",
   rejected: "취소함",
+  canceled: "멈춤",
 };
 
 const RUN_TONE: Record<string, Tone> = {
@@ -54,6 +55,7 @@ const RUN_TONE: Record<string, Tone> = {
   succeeded: "ok",
   failed: "crit",
   rejected: "neutral",
+  canceled: "neutral",
 };
 
 function when(iso: string) {

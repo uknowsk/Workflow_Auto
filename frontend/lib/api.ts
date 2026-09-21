@@ -7,6 +7,12 @@ export const API_BASE =
 
 const TOKEN_KEY = "wfa_token";
 const USER_KEY = "wfa_user";
+const ISSUED_KEY = "wfa_token_at";
+
+// 출입증은 2시간짜리입니다. 일하는 도중에 튕기면 안 되므로, 쓰고 있는 동안
+// 절반(1시간)이 지나면 다음 요청에 맞춰 조용히 새로 받아 옵니다.
+// 화면을 닫아 두면 연장되지 않고 2시간 뒤에 죽습니다 - 그게 이 값을 줄인 이유입니다.
+const RENEW_AFTER_MS = 60 * 60 * 1000;
 
 export function getToken(): string {
   if (typeof window === "undefined") return "";
@@ -22,14 +28,43 @@ export function getSession(): { user_id: string; is_admin: boolean } | null {
 export function saveSession(token: string, user_id: string, is_admin: boolean) {
   window.localStorage.setItem(TOKEN_KEY, token);
   window.localStorage.setItem(USER_KEY, JSON.stringify({ user_id, is_admin }));
+  window.localStorage.setItem(ISSUED_KEY, String(Date.now()));
 }
 
 export function clearSession() {
   window.localStorage.removeItem(TOKEN_KEY);
   window.localStorage.removeItem(USER_KEY);
+  window.localStorage.removeItem(ISSUED_KEY);
+}
+
+// 연장은 한 번에 하나만. 화면 여러 개가 동시에 부르면 출입증이 엇갈립니다.
+let renewing: Promise<void> | null = null;
+
+async function renewIfStale() {
+  if (typeof window === "undefined" || !getToken() || renewing) return;
+  const issued = Number(window.localStorage.getItem(ISSUED_KEY) || 0);
+  if (issued && Date.now() - issued < RENEW_AFTER_MS) return;
+
+  renewing = fetch(`${API_BASE}/api/auth/refresh`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${getToken()}` },
+  })
+    .then(async (r) => {
+      if (!r.ok) return; // 연장에 실패해도 하던 일은 계속합니다. 만료되면 그때 로그인 화면으로.
+      const fresh = await r.json();
+      saveSession(fresh.token, fresh.user_id, fresh.is_admin);
+    })
+    .catch(() => undefined)
+    .finally(() => {
+      renewing = null;
+    });
+  await renewing;
 }
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  // 쓰고 있는 동안에만 연장합니다(연장 요청 자신은 여기를 거치지 않습니다).
+  if (!path.startsWith("/api/auth/refresh")) await renewIfStale();
+
   const token = getToken();
   const headers: Record<string, string> = {
     ...(init.body instanceof FormData ? {} : { "Content-Type": "application/json" }),
@@ -236,7 +271,8 @@ export type Run = {
     | "running"
     | "succeeded"
     | "failed"
-    | "rejected";
+    | "rejected"
+    | "canceled";
   plan: PlanStep[];
   plan_summary: string;
   needs_approval: boolean;
@@ -270,6 +306,46 @@ export type Usage = {
   mine: { total_tokens: number; calls: number };
   all_users?: { total_tokens: number; calls: number };
   by_user?: { user_id: string; total_tokens: number; calls: number }[];
+};
+export type AdminSetting = {
+  key: string;
+  label: string;
+  hint: string;
+  value: number;
+  default: number;
+};
+export type AdminErrors = {
+  days: number;
+  runs: { at: string; user_id: string; request: string; error: string; run_id: string }[];
+  app_calls: {
+    at: string;
+    app: string;
+    tool: string;
+    user_id: string;
+    error: string;
+    app_id: string;
+  }[];
+  apps_down: {
+    app: string;
+    app_id: string;
+    endpoint: string;
+    owner: string;
+    contact: string;
+    failures: number;
+    error: string;
+    last_seen: string;
+  }[];
+};
+export type Account = {
+  user_id: string;
+  name: string;
+  dept: string;
+  contact: string;
+  is_admin: boolean;
+  is_active: boolean;
+  created_at: string | null;
+  last_login_at: string | null;
+  dept_codes: string[];
 };
 export type Notice = {
   id: string;
@@ -425,6 +501,7 @@ export const api = {
     request<Run>("/api/runs", { method: "POST", body: JSON.stringify(body) }),
   getRun: (id: string) => request<Run>(`/api/runs/${id}`),
   approveRun: (id: string) => request<Run>(`/api/runs/${id}/approve`, { method: "POST" }),
+  cancelRun: (id: string) => request<Run>(`/api/runs/${id}/cancel`, { method: "POST" }),
   rejectRun: (id: string) => request<Run>(`/api/runs/${id}/reject`, { method: "POST" }),
 
   listRecipes: () => request<Recipe[]>("/api/recipes"),
@@ -484,6 +561,32 @@ export const api = {
   usage: () => request<Usage>("/api/stats/usage"),
   notifications: () => request<Notice[]>("/api/notifications"),
   audit: () => request<Record<string, unknown>[]>("/api/audit?limit=100"),
+
+  // ── 관리자: 최근 오류 · 운영 설정 · 계정 ─────────────────────────
+  adminErrors: (days = 7) => request<AdminErrors>(`/api/admin/errors?days=${days}`),
+  adminSettings: () => request<AdminSetting[]>("/api/admin/settings"),
+  saveAdminSettings: (values: Record<string, number>) =>
+    request<AdminSetting[]>("/api/admin/settings", {
+      method: "PUT",
+      body: JSON.stringify(values),
+    }),
+  cleanupNow: () =>
+    request<{ removed: Record<string, number> }>("/api/admin/cleanup", {
+      method: "POST",
+    }),
+
+  listAccounts: (q = "") =>
+    request<Account[]>(`/api/auth/users?q=${encodeURIComponent(q)}`),
+  updateAccount: (user_id: string, body: Record<string, unknown>) =>
+    request<Account>(`/api/auth/users/${user_id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+  resetPassword: (user_id: string, password: string) =>
+    request<Account>(`/api/auth/users/${user_id}/password`, {
+      method: "POST",
+      body: JSON.stringify({ password }),
+    }),
 
   // ── 도구 서랍 (메모·그림) ────────────────────────────────────────
   listNotes: () => request<Note[]>("/api/tools/notes"),

@@ -39,6 +39,7 @@ const STATUS_LABEL: Record<Run["status"], string> = {
   succeeded: "완료",
   failed: "실패",
   rejected: "취소함",
+  canceled: "멈춤",
 };
 
 const STATUS_TONE: Record<Run["status"], Tone> = {
@@ -49,7 +50,20 @@ const STATUS_TONE: Record<Run["status"], Tone> = {
   succeeded: "ok",
   failed: "crit",
   rejected: "neutral",
+  canceled: "neutral",
 };
+
+// 처음 오신 분들을 위한 예시. 빈 화면에 커서만 깜빡이면 아무도 첫 줄을 못 씁니다.
+// 넷 다 공식 앱만으로 실제로 되는 일이라, 눌러 보면 진짜 결과가 나옵니다.
+const EXAMPLES = [
+  "지난주 회의록을 정리해서 할 일을 담당자별로 뽑아 줘",
+  "이번 주 내 기록을 모아 주간보고 초안을 써 줘",
+  "아직 회신 안 한 사람들에게 리마인드 메일을 보내 줘",
+  "이 문서를 한 장으로 요약해 줘",
+];
+
+// 아직 끝나지 않아 '멈추기'를 누를 수 있는 상태들.
+const RUNNING: Run["status"][] = ["queued", "planning", "running"];
 
 export default function Home() {
   const [cards, setCards] = useState<CardType[]>([]);
@@ -82,7 +96,7 @@ export default function Home() {
   // 실행은 큐에 들어가므로, 끝나거나 확인이 필요할 때까지 2초마다 상태를 봅니다.
   useEffect(() => {
     if (!run) return;
-    const done = ["succeeded", "failed", "rejected", "awaiting_approval"];
+    const done = ["succeeded", "failed", "rejected", "canceled", "awaiting_approval"];
     if (done.includes(run.status)) return;
     const timer = setTimeout(
       () => api.getRun(run.id).then(setRun).catch(() => undefined),
@@ -171,6 +185,18 @@ export default function Home() {
             onChange={(e) => setText(e.target.value)}
           />
         </Field>
+
+        {!text.trim() && (
+          <Row style={{ marginBottom: "var(--space-3)" }}>
+            <Muted>이런 것도 됩니다</Muted>
+            {EXAMPLES.map((example) => (
+              <Button key={example} variant="ghost" small onClick={() => setText(example)}>
+                {example}
+              </Button>
+            ))}
+          </Row>
+        )}
+
         <Row>
           <Select
             value={formId}
@@ -223,7 +249,25 @@ export default function Home() {
         <Section>
           <SectionHead
             label="실행"
-            action={<Badge tone={STATUS_TONE[run.status]}>{STATUS_LABEL[run.status]}</Badge>}
+            action={
+              <Row>
+                {RUNNING.includes(run.status) && (
+                  <Button
+                    variant="ghost"
+                    small
+                    onClick={() =>
+                      api
+                        .cancelRun(run.id)
+                        .then(setRun)
+                        .catch((e) => setError(e instanceof Error ? e.message : String(e)))
+                    }
+                  >
+                    멈추기
+                  </Button>
+                )}
+                <Badge tone={STATUS_TONE[run.status]}>{STATUS_LABEL[run.status]}</Badge>
+              </Row>
+            }
           />
           <Card>
             {run.status === "awaiting_approval" && (
@@ -269,6 +313,9 @@ export default function Home() {
                   </li>
                 ))}
               </ul>
+            )}
+            {run.status === "canceled" && (
+              <Muted>멈췄습니다. 이미 끝난 단계까지의 결과만 위에 남아 있습니다.</Muted>
             )}
             {run.result_text && <Lines boxed>{run.result_text}</Lines>}
             {run.error && (

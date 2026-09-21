@@ -36,6 +36,8 @@ type Shape =
       to: Point;
       color: string;
       width: number;
+      /** 사각형·원 안을 채울 색. null 이면 안을 비웁니다. */
+      fill?: string | null;
     }
   | { kind: "text"; at: Point; text: string; color: string; size: number }
   | { kind: "image"; src: string };
@@ -64,7 +66,10 @@ const COLORS = [
 const WIDTHS = [2, 4, 8, 16];
 
 /** 마우스 자리 동그라미의 최소 지름(px). 이보다 작으면 눈에 안 띕니다. */
-const RING_MIN = 14;
+const RING_MIN = 18;
+
+/** 안을 채울 수 있는 도구(닫힌 도형만). 직선·화살표는 채울 안이 없습니다. */
+const FILLABLE = new Set<ToolKind>(["rect", "ellipse"]);
 
 /** 도형 하나를 캔버스에 그립니다. */
 function paint(
@@ -129,6 +134,13 @@ function paint(
     return;
   }
   const { from, to } = shape;
+  // 안을 먼저 채우고 그 위에 테두리를 긋습니다. 반대로 하면 채운 색이
+  // 테두리 안쪽 절반을 덮어서 선이 얇아 보입니다.
+  const fillShape = () => {
+    if (!shape.fill) return;
+    ctx.fillStyle = shape.fill;
+    ctx.fill();
+  };
   ctx.beginPath();
   if (shape.kind === "line") {
     ctx.moveTo(from.x, from.y);
@@ -136,6 +148,7 @@ function paint(
     ctx.stroke();
   } else if (shape.kind === "rect") {
     ctx.rect(from.x, from.y, to.x - from.x, to.y - from.y);
+    fillShape();
     ctx.stroke();
   } else if (shape.kind === "ellipse") {
     ctx.ellipse(
@@ -147,6 +160,7 @@ function paint(
       0,
       Math.PI * 2
     );
+    fillShape();
     ctx.stroke();
   } else {
     // 화살표: 몸통을 긋고 끝에 날개 두 개를 붙입니다.
@@ -186,6 +200,8 @@ export default function DrawTool() {
   const [tool, setTool] = useState<ToolKind>("pen");
   const [color, setColor] = useState(COLORS[0]);
   const [width, setWidth] = useState(4);
+  // 사각형·원 안을 채울 색. null 이면 "없음"(안을 비움)입니다.
+  const [fill, setFill] = useState<string | null>(null);
   const [textAt, setTextAt] = useState<Point | null>(null);
   const [textValue, setTextValue] = useState("");
 
@@ -303,7 +319,7 @@ export default function DrawTool() {
     draftRef.current =
       tool === "pen" || tool === "eraser"
         ? { kind: tool, points: [at], color, width }
-        : { kind: tool, from: at, to: at, color, width };
+        : { kind: tool, from: at, to: at, color, width, fill: FILLABLE.has(tool) ? fill : null };
     render();
   };
 
@@ -529,6 +545,27 @@ export default function DrawTool() {
       </Row>
 
       <Row className="tool-draw__bar">
+        <span className="ui-eyebrow">채우기</span>
+        <Chip active={fill === null} onClick={() => setFill(null)}>
+          없음
+        </Chip>
+        {COLORS.map((value) => (
+          <button
+            key={value}
+            type="button"
+            className={`tool-draw__swatch${fill === value ? " is-on" : ""}`}
+            style={{ background: value }}
+            aria-label={`채우기 ${value}`}
+            aria-pressed={fill === value}
+            onClick={() => setFill(value)}
+          />
+        ))}
+        {!FILLABLE.has(tool) && (
+          <Muted>사각형과 원을 고르면 안이 채워집니다.</Muted>
+        )}
+      </Row>
+
+      <Row className="tool-draw__bar">
         <Button variant="ghost" small onClick={undo} disabled={!shapes.length}>
           되돌리기
         </Button>
@@ -556,7 +593,9 @@ export default function DrawTool() {
           onPointerEnter={trackCursor}
           onPointerLeave={leaveCursor}
         />
-        <div className="tool-draw__cursor" ref={cursorRef} aria-hidden />
+        <div className="tool-draw__cursor" ref={cursorRef} aria-hidden>
+          <i className="tool-draw__cursor-dot" />
+        </div>
         {textAt && (
           <div className="tool-draw__text" style={textStyle}>
             <input
