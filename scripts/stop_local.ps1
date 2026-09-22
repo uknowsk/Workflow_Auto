@@ -21,7 +21,7 @@ if (Test-Path $PidFile) {
 
 # 화면(next dev)과 npm 은 자식 프로세스를 더 만듭니다. 포트를 잡고 있으면 같이 내립니다.
 Start-Sleep -Seconds 1
-foreach ($p in @(3000,8000,9101,9102,9103,9111,9112,9113,9114,9115,9116,9117)) {
+foreach ($p in @(3000,8000,9101,9102,9103,9111,9112,9113,9114,9115,9116,9117,9118)) {
   try {
     foreach ($c in (Get-NetTCPConnection -LocalPort $p -State Listen -ErrorAction SilentlyContinue)) {
       try { Stop-Process -Id $c.OwningProcess -Force -ErrorAction Stop; $n++ } catch {}

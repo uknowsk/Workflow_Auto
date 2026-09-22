@@ -7,7 +7,7 @@
 # 필요한 것: Python 3.11 이상, Node 20 이상. 그 둘만 있으면 됩니다.
 # 데이터베이스는 PostgreSQL 대신 SQLite 파일 하나를 씁니다(.local-run/app.db).
 #
-# 되는 것   : 로그인, 앱스토어, 대시보드, 도구, 공식 앱 10개, 양식·보고서
+# 되는 것   : 로그인, 앱스토어, 대시보드, 도구, 공식 앱 11개, 양식·보고서
 # 안 되는 것: "계획 세우기"(오케스트레이터). Redis 가 필요합니다.
 #             어차피 Gauss(LLM) 주소가 없으면 이 기능은 도커로 띄워도 안 됩니다.
 set -u
@@ -86,7 +86,7 @@ root, out = Path(sys.argv[1]), Path(sys.argv[2])
 
 # 이 스크립트가 실제로 띄우는 포트들만 남깁니다. 안 띄우는 앱(예시 어댑터 등)을
 # 그대로 두면 앱스토어에 "응답 없음"으로 뜨는데, 고장난 것처럼 보입니다.
-RUNNING = {"9101", "9102", "9103", "9111", "9112", "9113", "9114", "9115", "9116", "9117"}
+RUNNING = {"9101", "9102", "9103", "9111", "9112", "9113", "9114", "9115", "9116", "9117", "9118"}
 
 apps, skipped = [], 0
 for name in ("apps.seed.official.json", "apps.seed.example.json", "apps.seed.json"):
@@ -126,14 +126,14 @@ wait_port() {  # wait_port <포트> <몇초까지>
   return 1
 }
 
-# ── 4. 공식 앱 10개 ─────────────────────────────────────────────────
-head_ "4. 공식 앱 10개"
+# ── 4. 공식 앱 11개 ─────────────────────────────────────────────────
+head_ "4. 공식 앱 11개"
 export DATA_DIR="$RUN_DIR/data"
 export PYTHONUNBUFFERED=1
 
-# 업무 도구 앱 7개: official_apps/ 폴더에서 패키지로 띄웁니다.
+# 업무 도구 앱 8개: official_apps/ 폴더에서 패키지로 띄웁니다.
 for pair in "9111 dev_projects" "9112 achievements" "9113 weekly_report" \
-            "9114 toolbox" "9115 meeting_scheduler" "9116 approvals" "9117 docs_assistant"; do
+            "9114 toolbox" "9115 meeting_scheduler" "9116 approvals" "9117 docs_assistant" "9118 report_forms"; do
   port=${pair%% *}; pkg=${pair##* }
   PORT="$port" PUBLIC_BASE_URL="http://localhost:$port" \
     start "$pkg" official_apps "$VENV/bin/python" -m "$pkg.server"
@@ -148,14 +148,14 @@ PORT=9103 TASKS_DB="$RUN_DIR/data/tasks.db" \
   start tasks official_apps/tasks "$VENV/bin/python" server.py
 
 failed=""
-for p in 9101 9102 9103 9111 9112 9113 9114 9115 9116 9117; do
+for p in 9101 9102 9103 9111 9112 9113 9114 9115 9116 9117 9118; do
   wait_port "$p" 30 || failed="$failed $p"
 done
 if [ -n "$failed" ]; then
   bad "안 뜬 앱 포트:$failed"
   note "이유는 여기에 있습니다: .local-run/logs/"
 else
-  ok "공식 앱 10개가 떴습니다 (9101~9103, 9111~9117)"
+  ok "공식 앱 11개가 떴습니다 (9101~9103, 9111~9118)"
 fi
 
 # ── 5. 백엔드 ───────────────────────────────────────────────────────

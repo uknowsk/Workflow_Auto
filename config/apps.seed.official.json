@@ -84,6 +84,18 @@
       "owner": "로아빠",
       "owner_dept": "플랫폼개발팀",
       "icon": "📝"
+    },
+    {
+      "slug": "report-forms",
+      "name": "보고서 양식 제작",
+      "endpoint": "http://app-report-forms:9118/mcp",
+      "description": "수명업무 보고서를 만듭니다. 보고서 종류(검토·결과·출장·현황·이슈·회의결과)와 분량(1장/3장/상세)을 고르면 항목과 작성 안내가 든 양식을 워드·엑셀·PPT·HTML 로 만들어 줍니다. 지시 내용을 주면 초안 문장까지 씁니다.",
+      "usage_hint": "위에서 내려온 일을 보고서로 써야 할 때 사용",
+      "category": "문서",
+      "capability_tag": "보고서양식",
+      "owner": "로아빠",
+      "owner_dept": "플랫폼개발팀",
+      "icon": "🧾"
     }
   ]
 }

@@ -257,8 +257,8 @@ services:
     ports: ["9103:9103"]
     restart: unless-stopped
 
-  # ── 공식 앱 7개 (official_apps/) ────────────────────────────────────
-  # 이미지 하나에 7개 앱이 들어 있고, command 로 어떤 앱을 띄울지 고릅니다.
+  # ── 공식 앱 8개 (official_apps/) ────────────────────────────────────
+  # 이미지 하나에 8개 앱이 들어 있고, command 로 어떤 앱을 띄울지 고릅니다.
   # 아래 &official-app 은 반복되는 설정을 한 번만 쓰기 위한 YAML 문법입니다.
 
   app-dev-projects:
@@ -318,6 +318,16 @@ services:
       <<: *official-app-env
       PORT: "9117"
     ports: ["9117:9117"]
+
+  app-report-forms:
+    <<: *official-app
+    command: ["python", "-m", "report_forms.server"]
+    environment:
+      <<: *official-app-env
+      PORT: "9118"
+      # 만든 보고서 파일(워드·엑셀·PPT·HTML)을 내려받을 때 쓰는 주소
+      PUBLIC_BASE_URL: ${OFFICIAL_APPS_HOST:-http://localhost}:9118
+    ports: ["9118:9118"]
 
 volumes:
   pgdata:
