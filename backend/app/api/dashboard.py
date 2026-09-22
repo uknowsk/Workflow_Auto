@@ -21,7 +21,8 @@ import logging
 from functools import lru_cache
 from pathlib import Path
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.api.stats import app_ranking
@@ -68,12 +69,14 @@ DEFAULT_WIDGETS: list[dict] = [
         "hint": "할 일 앱(역할 태그 할일관리)을 등록하면 여기에 채워집니다.",
     },
     {
-        "key": "deliverables",
-        "title": "내 프로젝트 · 다음 산출물",
+        "key": "my_projects",
+        "title": "등록된 프로젝트",
         "icon": "📁",
         "capability_tag": "개발프로젝트관리",
         "tool": "list_my_projects",
         "arguments": {"user_id": "{{user_id}}"},
+        # 글이 아니라 표·시간축으로 그리는 칸입니다(아래 _fetch_widget 설명 참고).
+        "render": "projects",
         "hint": "개발 프로젝트 앱(역할 태그 개발프로젝트관리)을 등록하면 여기에 채워집니다.",
     },
 ]
@@ -116,7 +119,12 @@ def _pick_app(db: Session, capability_tag: str, user_id: str) -> App | None:
 async def _fetch_widget(
     db: Session, widget: dict, user_id: str, user_name: str = ""
 ) -> dict:
-    """칸 하나를 채웁니다. 앱이 없거나 느려도 빈 칸으로 돌려주고 넘어갑니다."""
+    """칸 하나를 채웁니다. 앱이 없거나 느려도 빈 칸으로 돌려주고 넘어갑니다.
+
+    보통은 앱이 돌려준 글을 그대로 보여 줍니다. 칸에 render 가 적혀 있으면
+    앱이 돌려준 JSON 을 풀어 data 에 같이 실어 보내고, 화면이 그 모양에 맞는
+    그림(예: 프로젝트 시간축)으로 그립니다. 푸는 데 실패하면 그냥 글로 보여 줍니다.
+    """
     result = {
         "key": widget.get("key", ""),
         "title": widget.get("title", ""),
@@ -125,6 +133,8 @@ async def _fetch_widget(
         "app": "",
         "text": "",
         "hint": widget.get("hint", ""),
+        "render": widget.get("render", ""),
+        "data": None,
     }
 
     app = _pick_app(db, widget.get("capability_tag", ""), user_id)
@@ -157,6 +167,106 @@ async def _fetch_widget(
 
     result["status"] = "error" if is_error else ("ok" if text.strip() else "empty")
     result["text"] = text[:2000]
+
+    if result["status"] == "ok" and widget.get("render"):
+        try:
+            payload = json.loads(text)
+        except json.JSONDecodeError:
+            payload = None
+        if isinstance(payload, dict):
+            result["data"] = payload
+            if payload.get("count") == 0:
+                result["status"] = "empty"
+    return result
+
+
+# ── 프로젝트 고쳐 쓰기 ────────────────────────────────────────────────
+# 대시보드에서 프로젝트를 직접 등록/수정할 수 있게 앱의 기능을 그대로 이어 줍니다.
+# (평소에는 "프로젝트 등록해줘" 처럼 말로 시켜도 오케스트레이터가 같은 기능을 부릅니다.)
+PROJECT_TAG = "개발프로젝트관리"
+
+
+class ProjectIn(BaseModel):
+    name: str = ""
+    model: str = ""
+    role: str = ""
+    stage: str = "기획"
+    start_date: str = ""
+    rts_date: str = ""
+    milestones: str = ""
+
+
+class ProjectPatch(BaseModel):
+    stage: str = ""
+    status: str = ""
+    model: str = ""
+    rts_date: str = ""
+    milestones: str = ""
+
+
+async def _call_project_app(db: Session, user_id: str, tool: str, arguments: dict) -> dict:
+    app = _pick_app(db, PROJECT_TAG, user_id)
+    if app is None:
+        raise HTTPException(
+            400, f"역할 태그가 '{PROJECT_TAG}' 인 앱이 앱스토어에 없습니다."
+        )
+    if tool not in {t.name for t in app.tools}:
+        raise HTTPException(400, f"'{app.name}' 앱에 '{tool}' 기능이 없습니다.")
+    try:
+        text, is_error = await mcp.call_tool(
+            app.endpoint,
+            tool,
+            arguments,
+            headers=app.auth_headers or {},
+            timeout=settings.dashboard_timeout,
+        )
+    except Exception as exc:
+        raise HTTPException(502, f"앱을 부르지 못했습니다: {exc}") from exc
+    if is_error:
+        raise HTTPException(400, text[:500])
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        return {"ok": True, "text": text}
+
+
+@router.post("/projects", summary="프로젝트 등록")
+async def add_project(
+    body: ProjectIn,
+    db: Session = Depends(get_db),
+    user_id: str = Depends(current_user),
+) -> dict:
+    if not body.name.strip():
+        raise HTTPException(400, "프로젝트 이름을 적어 주세요.")
+    return await _call_project_app(
+        db,
+        user_id,
+        "register_project",
+        {"user_id": user_id, **body.model_dump()},
+    )
+
+
+@router.patch("/projects/{project_id}", summary="프로젝트 단계·기한 수정")
+async def edit_project(
+    project_id: str,
+    body: ProjectPatch,
+    db: Session = Depends(get_db),
+    user_id: str = Depends(current_user),
+) -> dict:
+    fields = body.model_dump()
+    milestones = fields.pop("milestones", "")
+    result: dict = {"ok": True}
+    if any(fields.values()):
+        result = await _call_project_app(
+            db, user_id, "update_project", {"project_id": project_id, **fields}
+        )
+    if milestones.strip():
+        result = await _call_project_app(
+            db,
+            user_id,
+            "set_milestones",
+            {"project_id": project_id, "milestones": milestones},
+        )
     return result
 
 

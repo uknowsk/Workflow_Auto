@@ -8,7 +8,7 @@ export function TopBar({ right }: { right?: ReactNode }) {
   return (
     <div className="ui-topbar">
       <div className="ui-topbar__in">
-        <Link className="ui-brand" href="/">
+        <Link className="ui-brand" href="/dashboard">
           <span className="ui-brand__mark" aria-hidden="true">
             W
           </span>

@@ -23,7 +23,7 @@ import httpx
 from mcp.server.fastmcp import FastMCP
 
 from common import office
-from common.dates import days_between
+from common.dates import days_between, parse_date
 from common.store import DATA_DIR, Store, today_iso
 
 FORMS_DIR = Path(os.getenv("FORMS_DIR", Path(__file__).parent / "forms"))
@@ -58,6 +58,112 @@ STAGE_DELIVERABLES = {
     "이행": ["이행계획서", "완료보고서", "운영 인수인계서"],
 }
 STAGES = list(STAGE_DELIVERABLES)
+
+# "설계완료 2026-03-31" 처럼 이름과 날짜가 한 덩어리로 들어옵니다.
+_MILESTONE = re.compile(r"(\d{4}[-/.]?\d{1,2}[-/.]?\d{1,2})")
+# 산출물은 대괄호로 덧붙입니다. 예) 설계완료 2026-03-31 [시스템설계서, 화면설계서]
+_DELIVERABLES = re.compile(r"\[([^\]]*)\]")
+
+
+def parse_milestones(text: str) -> list[dict]:
+    """'설계완료 2026-03-31, PP 2026-05-20' 을 [{name, date, deliverables}, ...] 로 바꿉니다.
+
+    마일스톤에서 내야 하는 산출물은 대괄호로 덧붙일 수 있습니다.
+        설계완료 2026-03-31 [시스템설계서, 화면설계서]
+    안 적으면 이름에서 단계(기획/분석/설계/구현/시험/이행)를 찾아 그 단계의
+    산출물을 씁니다. 날짜가 없는 토막은 버립니다(시간축에 찍을 수 없으니까).
+    """
+    milestones: list[dict] = []
+    for chunk in re.split(r"[,\n;](?![^\[]*\])", text or ""):
+        chunk = chunk.strip()
+        if not chunk:
+            continue
+        found = _MILESTONE.search(chunk)
+        if not found:
+            continue
+        deliverables: list[str] = []
+        bracket = _DELIVERABLES.search(chunk)
+        if bracket:
+            deliverables = [d.strip() for d in bracket.group(1).split(",") if d.strip()]
+            chunk = chunk.replace(bracket.group(0), " ")
+        name = chunk.replace(found.group(1), "").strip(" -:·\t")
+        name = name or "마일스톤"
+        milestones.append(
+            {
+                "name": name,
+                "date": parse_date(found.group(1)).isoformat(),
+                "deliverables": deliverables or _deliverables_for(name),
+            }
+        )
+    milestones.sort(key=lambda m: m["date"])
+    return milestones
+
+
+def _deliverables_for(name: str) -> list[str]:
+    """마일스톤 이름에 단계 이름이 들어 있으면 그 단계의 산출물을 씁니다.
+
+    예) '설계완료' -> 설계 단계의 산출물. 못 찾으면 빈 목록.
+    """
+    for stage, items in STAGE_DELIVERABLES.items():
+        if stage in name:
+            return list(items)
+    return []
+
+
+def _decorate(project: dict) -> dict:
+    """화면이 그대로 그릴 수 있도록 날짜 계산을 붙여 줍니다.
+
+    시간축은 시작일 ~ RTS(개발완료) 사이이고, 오늘이 그 사이 몇 % 지점인지를
+    같이 넣어 줍니다. RTS 가 없으면 목표 완료일, 그것도 없으면 마지막 마일스톤을 씁니다.
+    """
+    project = dict(project)
+    milestones = list(project.get("milestones") or [])
+
+    end = project.get("rts_date") or project.get("due_date") or ""
+    if not end and milestones:
+        end = milestones[-1]["date"]
+    # RTS 는 시간축의 끝이므로 마일스톤 줄에도 같이 보여 줍니다(중복은 피합니다).
+    if project.get("rts_date") and not any(
+        m["date"] == project["rts_date"] for m in milestones
+    ):
+        milestones.append(
+            {"name": "RTS (개발완료)", "date": project["rts_date"], "deliverables": []}
+        )
+    milestones.sort(key=lambda m: m["date"])
+
+    # 이 프로젝트로 이미 만들어 둔 산출물 초안 이름. 마일스톤별 완료 표시에 씁니다.
+    made = {
+        d.get("form_name", "")
+        for d in (store.list("draft", project_id=project.get("id", "")) if project.get("id") else [])
+    }
+
+    start = project.get("start_date") or (milestones[0]["date"] if milestones else today_iso())
+    span = days_between(start, end) if end else 0
+    passed = days_between(start)
+
+    for m in milestones:
+        m["days_left"] = -days_between(m["date"])
+        m["passed"] = m["days_left"] < 0
+        m["percent"] = round(days_between(start, m["date"]) / span * 100, 1) if span > 0 else 100.0
+        items = list(m.get("deliverables") or [])
+        # 산출물은 이름이 같은 초안이 있으면 "냈다"로 봅니다.
+        m["deliverables"] = [{"name": item, "done": item in made} for item in items]
+        m["done_count"] = sum(1 for d in m["deliverables"] if d["done"])
+        # 마일스톤이 끝났다고 보려면 날짜가 지났고 산출물도 다 나와야 합니다.
+        m["done"] = bool(items) and m["done_count"] == len(items)
+
+    project["milestones"] = milestones
+    project["days_left"] = -days_between(end) if end else None
+    project["next_deliverables"] = STAGE_DELIVERABLES.get(project.get("stage", ""), [])
+    project["timeline"] = {
+        "start": start,
+        "end": end,
+        "today": today_iso(),
+        # 오늘이 시간축 어디쯤인지. 0 이면 시작일, 100 이면 RTS 당일입니다.
+        "percent": max(0.0, min(100.0, round(passed / span * 100, 1))) if span > 0 else 100.0,
+    }
+    return project
+
 
 _FRONT_MATTER = re.compile(r"\A---\n(.*?)\n---\n", re.S)
 TEXT_SUFFIXES = {".md", ".txt", ".csv"}
@@ -183,42 +289,54 @@ def _resolve_form(form_key: str) -> dict:
 def register_project(
     user_id: str,
     name: str,
+    model: str = "",
     role: str = "",
     stage: str = "기획",
     description: str = "",
     start_date: str = "",
+    rts_date: str = "",
     due_date: str = "",
+    milestones: str = "",
 ) -> dict:
     """내가 속한 개발 프로젝트를 등록합니다.
 
     Args:
         user_id: 사번. 예) E1001
         name: 프로젝트 이름
+        model: 모델명. 예) SM-X100
         role: 이 프로젝트에서 내 역할. 예) 설계 담당
         stage: 현재 단계. 기획/분석/설계/구현/시험/이행 중 하나
         description: 프로젝트 한 줄 설명
         start_date: 시작일. 예) 2026-01-05
-        due_date: 목표 완료일. 예) 2026-06-30
+        rts_date: RTS(개발완료) 목표일. 예) 2026-06-30
+        due_date: 목표 완료일. 비우면 RTS 날짜를 씁니다.
+        milestones: 주요 마일스톤. "이름 날짜" 를 쉼표로 이어서. 예) 설계완료 2026-03-31, PP 2026-05-20
     """
     project = store.put(
         "project",
         {
             "name": name,
+            "model": model,
             "role": role,
             "stage": stage if stage in STAGE_DELIVERABLES else "기획",
             "description": description,
             "start_date": start_date or today_iso(),
-            "due_date": due_date,
+            "rts_date": rts_date,
+            "due_date": due_date or rts_date,
+            "milestones": parse_milestones(milestones),
             "status": "진행중",
         },
         user_id=user_id,
     )
-    return project
+    return _decorate(project)
 
 
 @mcp.tool()
 def list_my_projects(user_id: str, include_finished: bool = False) -> dict:
-    """내가 등록한 개발 프로젝트 목록과 각 프로젝트의 현재 단계를 돌려줍니다.
+    """내가 등록한 개발 프로젝트 목록을 돌려줍니다.
+
+    프로젝트마다 모델명, 현재 단계, RTS(개발완료) 날짜, 주요 마일스톤, 그리고
+    시작일부터 RTS 까지의 시간축에서 오늘이 어디쯤인지를 같이 알려 줍니다.
 
     Args:
         user_id: 사번. 예) E1001
@@ -227,11 +345,30 @@ def list_my_projects(user_id: str, include_finished: bool = False) -> dict:
     projects = store.list("project", user_id=user_id)
     if not include_finished:
         projects = [p for p in projects if p.get("status") != "완료"]
-    for project in projects:
-        due = project.get("due_date") or ""
-        project["days_left"] = -days_between(due) if due else None
-        project["next_deliverables"] = STAGE_DELIVERABLES.get(project.get("stage", ""), [])
-    return {"count": len(projects), "projects": projects}
+    rows = [_decorate(project) for project in projects]
+    # 개발완료가 코앞인 것부터 봅니다. 날짜가 없는 것은 뒤로.
+    rows.sort(key=lambda r: (r["days_left"] is None, r["days_left"]))
+    return {"count": len(rows), "projects": rows}
+
+
+@mcp.tool()
+def set_milestones(project_id: str, milestones: str) -> dict:
+    """프로젝트의 주요 마일스톤을 통째로 새로 적습니다.
+
+    Args:
+        project_id: 프로젝트 id
+        milestones: "이름 날짜" 를 쉼표로 이어서. 예) 설계완료 2026-03-31, PP 2026-05-20, RTS 2026-06-30
+    """
+    parsed = parse_milestones(milestones)
+    if not parsed:
+        return {
+            "ok": False,
+            "error": "마일스톤을 읽지 못했습니다. '설계완료 2026-03-31, PP 2026-05-20' 처럼 적어 주세요.",
+        }
+    updated = store.update(project_id, milestones=parsed)
+    if updated is None:
+        return {"ok": False, "error": f"프로젝트를 찾을 수 없습니다: {project_id}"}
+    return {"ok": True, "project": _decorate(updated)}
 
 
 @mcp.tool()
@@ -239,6 +376,8 @@ def update_project(
     project_id: str,
     stage: str = "",
     status: str = "",
+    model: str = "",
+    rts_date: str = "",
     due_date: str = "",
     note: str = "",
 ) -> dict:
@@ -248,6 +387,8 @@ def update_project(
         project_id: 프로젝트 id
         stage: 새 단계. 기획/분석/설계/구현/시험/이행
         status: 진행중 / 보류 / 완료
+        model: 모델명. 예) SM-X100
+        rts_date: 새 RTS(개발완료) 목표일. 예) 2026-07-31
         due_date: 새 목표 완료일. 예) 2026-07-31
         note: 메모
     """
@@ -258,6 +399,12 @@ def update_project(
         fields["stage"] = stage
     if status:
         fields["status"] = status
+    if model:
+        fields["model"] = model
+    if rts_date:
+        fields["rts_date"] = rts_date
+        if not due_date:
+            fields["due_date"] = rts_date
     if due_date:
         fields["due_date"] = due_date
     if note:
@@ -266,7 +413,7 @@ def update_project(
     updated = store.update(project_id, **fields)
     if updated is None:
         return {"ok": False, "error": f"프로젝트를 찾을 수 없습니다: {project_id}"}
-    return {"ok": True, "project": updated}
+    return {"ok": True, "project": _decorate(updated)}
 
 
 @mcp.tool()

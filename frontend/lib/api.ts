@@ -203,6 +203,43 @@ export type DashboardWidget = {
   app: string;
   text: string;
   hint: string;
+  /** 글 대신 그림으로 그리는 칸이면 그 이름. 지금은 "projects" 하나뿐입니다. */
+  render?: string;
+  /** render 가 있을 때, 앱이 돌려준 내용을 풀어 놓은 것. */
+  data?: { count?: number; projects?: Project[] } | null;
+};
+
+/** 마일스톤에서 내야 하는 산출물 하나. */
+export type Deliverable = { name: string; done: boolean };
+export type Milestone = {
+  name: string;
+  date: string;
+  /** 시간축에서 이 마일스톤의 위치(0~100%). */
+  percent: number;
+  days_left: number;
+  /** 날짜가 지났는지 */
+  passed: boolean;
+  /** 산출물까지 다 나왔는지 */
+  done: boolean;
+  done_count: number;
+  deliverables: Deliverable[];
+};
+export type Project = {
+  id: string;
+  name: string;
+  model: string;
+  role: string;
+  stage: string;
+  status: string;
+  description: string;
+  start_date: string;
+  rts_date: string;
+  due_date: string;
+  /** RTS 까지 남은 날. 지났으면 음수, 날짜가 없으면 null. */
+  days_left: number | null;
+  milestones: Milestone[];
+  timeline: { start: string; end: string; today: string; percent: number };
+  next_deliverables: string[];
 };
 export type Dashboard = {
   user_id: string;
@@ -506,6 +543,27 @@ export const api = {
     request<void>(`/api/schedules/${id}`, { method: "DELETE" }),
 
   dashboard: () => request<Dashboard>("/api/dashboard"),
+  addProject: (body: {
+    name: string;
+    model?: string;
+    role?: string;
+    stage?: string;
+    start_date?: string;
+    rts_date?: string;
+    milestones?: string;
+  }) =>
+    request<Project>("/api/dashboard/projects", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  editProject: (
+    id: string,
+    body: { stage?: string; status?: string; model?: string; rts_date?: string; milestones?: string }
+  ) =>
+    request<{ ok: boolean; project?: Project; error?: string }>(
+      `/api/dashboard/projects/${id}`,
+      { method: "PATCH", body: JSON.stringify(body) }
+    ),
 
   appRanking: () => request<Ranking>("/api/stats/apps"),
   usage: () => request<Usage>("/api/stats/usage"),
