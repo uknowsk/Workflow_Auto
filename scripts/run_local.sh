@@ -54,7 +54,13 @@ if [ ! -x "$VENV/bin/python" ]; then
   printf '  ... 파이썬 전용 방(venv)을 만드는 중\n'
   "$PY" -m venv "$VENV" || die "venv 를 만들지 못했습니다."
 fi
-if [ ! -f "$RUN_DIR/.deps-ok" ]; then
+# 받아 둔 꾸러미가 지금 목록과 같은지 봅니다. 그냥 "한 번 받았음" 표시만 남기면,
+# 나중에 requirements 에 꾸러미가 하나 늘었을 때 조용히 건너뛰어서
+# "회사에서 갑자기 앱이 안 뜬다" 가 됩니다.
+REQ_FILES="backend/requirements.txt official_apps/requirements.txt official_apps/mail/requirements.txt"
+# shellcheck disable=SC2086
+DEPS_FP=$(cat $REQ_FILES 2>/dev/null | cksum | tr ' ' '-')
+if [ "$(cat "$RUN_DIR/.deps-ok" 2>/dev/null)" != "$DEPS_FP" ]; then
   printf '  ... 꾸러미를 받는 중 (처음 한 번, 몇 분 걸립니다)\n'
   # shellcheck disable=SC2086
   "$VENV/bin/pip" install -q --upgrade pip $PIP_ARGS >/dev/null 2>&1
@@ -66,7 +72,7 @@ if [ ! -f "$RUN_DIR/.deps-ok" ]; then
     note "사내망이면 .env 에 PIP_INDEX_URL / PIP_TRUSTED_HOST 를 넣고 다시 실행하세요."
     die "파이썬 꾸러미를 받지 못했습니다."
   fi
-  mkdir -p "$RUN_DIR" && : > "$RUN_DIR/.deps-ok"
+  mkdir -p "$RUN_DIR" && printf '%s\n' "$DEPS_FP" > "$RUN_DIR/.deps-ok"
 fi
 ok "파이썬 꾸러미 준비됨 ($VENV)"
 

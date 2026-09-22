@@ -65,14 +65,26 @@ $pipArgs = @()
 if (Env2 'PIP_INDEX_URL')   { $pipArgs += @('-i', (Env2 'PIP_INDEX_URL')) }
 if (Env2 'PIP_TRUSTED_HOST'){ $pipArgs += @('--trusted-host', (Env2 'PIP_TRUSTED_HOST')) }
 
-if ($Reinstall -and (Test-Path $Venv)) { Remove-Item -Recurse -Force $Venv }
+# -Reinstall 은 venv 뿐 아니라 '받아 뒀음' 표시도 지워야 합니다.
+# 표시가 남아 있으면 새로 만든 빈 venv 에 꾸러미를 안 넣고 지나갑니다.
+if ($Reinstall) {
+  if (Test-Path $Venv) { Remove-Item -Recurse -Force $Venv }
+  Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path $RunDir '.deps-ok')
+}
 if (-not (Test-Path $VenvPy)) {
   Write-Host "  ... 파이썬 전용 방(venv)을 만드는 중"
   & $py -m venv $Venv
   if (-not (Test-Path $VenvPy)) { Die "venv 를 만들지 못했습니다." }
 }
+# 받아 둔 꾸러미가 지금 목록과 같은지 봅니다. 그냥 "한 번 받았음" 표시만 남기면,
+# 나중에 requirements 에 꾸러미가 하나 늘었을 때 조용히 건너뛰어서
+# "회사에서 갑자기 앱이 안 뜬다" 가 됩니다.
 $depsMark = Join-Path $RunDir '.deps-ok'
-if (-not (Test-Path $depsMark)) {
+$reqFiles = @('backend/requirements.txt', 'official_apps/requirements.txt', 'official_apps/mail/requirements.txt')
+$depsFp = (($reqFiles | ForEach-Object { (Get-FileHash -Path (Join-Path $Root $_) -Algorithm SHA256).Hash }) -join '-')
+$depsHave = ''
+if (Test-Path $depsMark) { $depsHave = ((Get-Content $depsMark -Raw -ErrorAction SilentlyContinue) + '').Trim() }
+if ($depsHave -ne $depsFp) {
   Write-Host "  ... 꾸러미를 받는 중 (처음 한 번, 몇 분 걸립니다)"
   & $VenvPy -m pip install -q --upgrade pip @pipArgs 2>&1 | Out-Null
   & $VenvPy -m pip install -q @pipArgs `
@@ -84,7 +96,7 @@ if (-not (Test-Path $depsMark)) {
     Die "파이썬 꾸러미를 받지 못했습니다."
   }
   New-Item -ItemType Directory -Force -Path $RunDir | Out-Null
-  New-Item -ItemType File -Force -Path $depsMark | Out-Null
+  Set-Content -Path $depsMark -Value $depsFp -Encoding ascii
 }
 Ok "파이썬 꾸러미 준비됨 ($Venv)"
 
