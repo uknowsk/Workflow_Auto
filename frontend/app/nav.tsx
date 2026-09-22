@@ -13,6 +13,10 @@ import {
 
 // 메뉴는 묶음으로 나눠 둡니다. 위아래 탭 테마에서는 한 줄로 이어 붙고,
 // 세로 메뉴 테마에서는 묶음 이름이 작은 라벨로 보입니다.
+//
+// 앱스토어는 이 줄에 없습니다. 아래 메뉴는 전부 "내 작업 공간"(내가 시킨 일,
+// 내 카드, 내 도구)인데, 앱스토어는 그 공간에 앱을 **가져오는 곳**이라 급이
+// 다릅니다. 그래서 맨 위 바에 따로 두었습니다(스마트폰의 앱과 앱스토어처럼).
 const GROUPS: { label: string; items: NavTabItem[] }[] = [
   {
     label: "작업",
@@ -21,12 +25,6 @@ const GROUPS: { label: string; items: NavTabItem[] }[] = [
       { href: "/", label: "내 에이전트" },
       { href: "/recipes", label: "레시피" },
       { href: "/schedules", label: "예약" },
-    ],
-  },
-  {
-    label: "자원",
-    items: [
-      { href: "/store", label: "앱스토어" },
       { href: "/forms", label: "양식" },
     ],
   },
@@ -71,6 +69,13 @@ export default function Nav() {
         right={
           onLogin ? null : session ? (
             <>
+              <a
+                className="ui-topbar__store"
+                href="/store"
+                aria-current={pathname.startsWith("/store") ? "page" : undefined}
+              >
+                앱스토어
+              </a>
               <ThemePicker />
               <span className="ui-topbar__id">{session.user_id}</span>
               <a href="/login" onClick={() => clearSession()}>

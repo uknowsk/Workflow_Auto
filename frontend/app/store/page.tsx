@@ -84,9 +84,14 @@ export default function Store() {
   const [me, setMe] = useState<{ user_id: string; is_admin: boolean } | null>(null);
   // 부서 담당자만 "부서 공통 앱"으로 올릴 수 있습니다.
   const [manageable, setManageable] = useState<MyDept[]>([]);
+  // 내 에이전트에 담아 둔 앱 → 그 앱의 카드 id. 카드 id 는 «열기»가 씁니다.
+  const [installed, setInstalled] = useState<Record<string, string>>({});
+  // 설치/빼기 결과 한 줄. 등록 상자 안의 message 와 달리 목록 위에 뜹니다.
+  const [notice, setNotice] = useState<{ text: string; bad: boolean } | null>(null);
 
   const reload = () => {
     api.vocCounts().then(setCounts).catch(() => undefined);
+    api.installedAppIds().then(setInstalled).catch(() => undefined);
     return api
       .listApps()
       .then(setApps)
@@ -140,6 +145,38 @@ export default function Store() {
     }
   };
 
+  // 설치 = 그 앱 하나만 쓰는 카드를 내 에이전트에 한 장 만드는 일입니다.
+  // 앱을 어디로 복사하는 게 아니라서 되돌리기도 카드 한 장 지우기로 끝납니다.
+  const install = async (app: App) => {
+    try {
+      const card = await api.installApp(app.id);
+      setInstalled((ids) => ({ ...ids, [app.id]: card.id }));
+      setNotice({
+        text:
+          app.status === "active"
+            ? `«${app.name}»을 내 에이전트에 담았습니다. 내 에이전트 화면의 카드로 바로 시킬 수 있어요.`
+            : `«${app.name}»을 담았습니다. 다만 지금 앱에 접속이 안 되는 상태라 실행은 실패할 수 있어요.`,
+        bad: app.status !== "active",
+      });
+    } catch (e) {
+      setNotice({ text: String(e), bad: true });
+    }
+  };
+
+  const uninstall = async (app: App) => {
+    try {
+      await api.uninstallApp(app.id);
+      setInstalled((ids) => {
+        const next = { ...ids };
+        delete next[app.id];
+        return next;
+      });
+      setNotice({ text: `«${app.name}»을 내 에이전트에서 지웠습니다.`, bad: false });
+    } catch (e) {
+      setNotice({ text: String(e), bad: true });
+    }
+  };
+
   const field = (key: string, label: string, hint = "") => (
     <Field label={label} hint={hint} htmlFor={`app-${key}`} key={key}>
       <Input
@@ -157,7 +194,7 @@ export default function Store() {
         <div style={{ minWidth: 0 }}>
           <PageTitle
             title="앱스토어"
-            sub={`등록된 앱 ${apps.length}개 · 필요한 앱을 찾아 내 에이전트에 담아 두세요`}
+            sub={`등록된 앱 ${apps.length}개 · 설치한 앱 ${Object.keys(installed).length}개 · «＋ 설치»를 누르면 내 에이전트에 카드로 담깁니다`}
           />
         </div>
         <Button
@@ -183,6 +220,15 @@ export default function Store() {
         ))}
       </Row>
 
+      {notice && (
+        <Alert
+          tone={notice.bad ? "crit" : "ok"}
+          style={{ marginBottom: "var(--space-3)" }}
+        >
+          {notice.text}
+        </Alert>
+      )}
+
       {shown.length === 0 ? (
         <Empty>
           조건에 맞는 앱이 없습니다. 위의 «＋ 앱 등록»으로 내 앱을 올릴 수 있어요.
@@ -193,7 +239,30 @@ export default function Store() {
             <div className="ui-app" key={app.id}>
               <IconTile large>{app.icon || "🧩"}</IconTile>
               <div>
-                <h3 className="ui-app__name">{app.name}</h3>
+                {/* 설치·빼기는 앱 이름 바로 옆에 둡니다. 아래 줄의 의견·업데이트는
+                    앱을 이미 쓰는 사람이 가끔 누르는 것이고, 설치는 목록을 훑다가
+                    바로 누르는 것이라 눈이 먼저 닿는 자리에 있어야 합니다. */}
+                <Row nowrap style={{ alignItems: "center", gap: 6 }}>
+                  <h3 className="ui-app__name">{app.name}</h3>
+                  {installed[app.id] ? (
+                    <>
+                      <Button
+                        variant="soft"
+                        tiny
+                        onClick={() => (location.href = `/?card=${installed[app.id]}`)}
+                      >
+                        열기
+                      </Button>
+                      <Button variant="danger" tiny onClick={() => uninstall(app)}>
+                        삭제
+                      </Button>
+                    </>
+                  ) : (
+                    <Button tiny onClick={() => install(app)}>
+                      ＋ 설치
+                    </Button>
+                  )}
+                </Row>
                 <p className="ui-app__desc">{app.description || app.usage_hint}</p>
                 <div className="ui-app__meta">
                   <Badge tone={GRADE_TONE[app.visibility] ?? "neutral"}>
@@ -205,6 +274,7 @@ export default function Store() {
                   <Tag>
                     {app.runtime_location === "pc" ? "💻 개인 PC" : "🖥️ 서버"}
                   </Tag>
+                  {installed[app.id] && <Badge tone="ok">✓ 설치됨</Badge>}
                   {app.requires_confirmation && (
                     <Badge tone="warn">실행 전 확인</Badge>
                   )}

@@ -419,6 +419,14 @@ export const api = {
   rejectApp: (id: string) => request<App>(`/api/apps/${id}/reject`, { method: "POST" }),
   listPending: () => request<App[]>("/api/apps/pending"),
 
+  /** 앱스토어의 «설치». 그 앱 하나만 쓰는 내 카드를 한 장 만듭니다. */
+  installApp: (id: string) =>
+    request<Card>(`/api/apps/${id}/install`, { method: "POST" }),
+  uninstallApp: (id: string) =>
+    request<void>(`/api/apps/${id}/install`, { method: "DELETE" }),
+  /** { 앱 id: 그 앱의 내 카드 id }. «열기»가 그 카드로 바로 가려고 씁니다. */
+  installedAppIds: () => request<Record<string, string>>("/api/apps/installed/ids"),
+
   shareAppToDept: (id: string, dept_code: string) =>
     request<App>(`/api/apps/${id}/share-dept`, {
       method: "POST",

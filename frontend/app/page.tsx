@@ -93,6 +93,24 @@ export default function Home() {
     reload();
   }, []);
 
+  // 앱스토어에서 «열기»로 들어오면 주소에 ?card=... 가 붙어 옵니다.
+  // 그 카드를 골라 놓고 입력칸으로 커서를 옮겨, 바로 시킬 것만 적으면 되게 합니다.
+  // (useSearchParams 대신 주소를 직접 읽습니다. 이 화면은 정적으로 내보내므로
+  //  useSearchParams 를 쓰면 Suspense 로 감싸야 합니다.)
+  useEffect(() => {
+    if (cards.length === 0) return;
+    const wanted = new URLSearchParams(window.location.search).get("card");
+    if (!wanted) return;
+    const card = cards.find((c) => c.id === wanted);
+    if (card) {
+      setCardId(card.id);
+      setText(card.prompt_template);
+      document.getElementById("ask")?.focus();
+    }
+    // 새로고침할 때마다 다시 고르지 않도록 주소에서 지웁니다.
+    window.history.replaceState(null, "", window.location.pathname);
+  }, [cards]);
+
   // 실행은 큐에 들어가므로, 끝나거나 확인이 필요할 때까지 2초마다 상태를 봅니다.
   useEffect(() => {
     if (!run) return;
@@ -213,7 +231,7 @@ export default function Home() {
           </Select>
           {cardId && (
             <Badge tone="accent">
-              카드로 실행 중{" "}
+              {cards.find((c) => c.id === cardId)?.title || "저장한"} 카드로 실행 중{" "}
               <button
                 type="button"
                 onClick={() => setCardId("")}
@@ -427,7 +445,12 @@ export default function Home() {
                     삭제
                   </Button>
                 </Row>
-                <Muted>{card.prompt_template || "요청문 없음"}</Muted>
+                {/* 앱스토어에서 설치한 카드는 요청문이 없습니다(무엇을 시킬지는
+                    그때그때 다르므로). 대신 앱 설명을 보여 주고, 눌렀을 때
+                    입력칸으로 바로 커서를 옮깁니다. */}
+                <Muted>
+                  {card.prompt_template || card.description || "요청문 없음"}
+                </Muted>
                 <div style={{ marginTop: "var(--space-2)" }}>
                   <Button
                     variant="ghost"
@@ -436,9 +459,12 @@ export default function Home() {
                       setText(card.prompt_template);
                       setCardId(card.id);
                       window.scrollTo({ top: 0, behavior: "smooth" });
+                      if (!card.prompt_template) {
+                        document.getElementById("ask")?.focus();
+                      }
                     }}
                   >
-                    이 카드로 요청
+                    {card.prompt_template ? "이 카드로 요청" : "이 앱에게 시키기"}
                   </Button>
                 </div>
               </Card>

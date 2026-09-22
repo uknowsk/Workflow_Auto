@@ -28,6 +28,15 @@ def _can_edit(db: Session, card: AgentCard, user_id: str) -> bool:
     return card.user_id == user_id
 
 
+def card_out(db: Session, card: AgentCard, user_id: str) -> AgentCardOut:
+    """카드 한 장을 화면용으로 바꿉니다(부서 이름까지 붙여서).
+
+    앱스토어의 «설치»도 카드를 만들기 때문에, 그쪽에서 가져다 씁니다.
+    카드를 내려보내는 모양이 화면마다 달라지지 않도록 이 함수 하나만 씁니다.
+    """
+    return _out(db, card, user_id, dept_service.dept_names(db, [card.dept_code]))
+
+
 def _out(db: Session, card: AgentCard, user_id: str, names: dict[str, str]) -> AgentCardOut:
     return AgentCardOut(
         id=card.id,

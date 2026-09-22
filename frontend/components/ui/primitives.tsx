@@ -20,17 +20,24 @@ export function cx(...names: (string | false | null | undefined)[]) {
 
 /* ------------------------------------------------------------------ 버튼 */
 
-type ButtonVariant = "primary" | "ghost" | "danger";
+// primary  누르길 바라는 한 개 (초록 채움)
+// soft     이미 한 번 한 일을 다시 여는 버튼 (연한 초록)
+// ghost    보조 (흰 바탕 테두리)
+// danger   되돌리는·지우는 일 (빨강 테두리)
+type ButtonVariant = "primary" | "soft" | "ghost" | "danger";
 
 export function Button({
   variant = "primary",
   small,
+  tiny,
   block,
   className,
   ...rest
 }: ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: ButtonVariant;
   small?: boolean;
+  /** 제목 옆에 붙일 때. 높이가 글 한 줄(20px)에 맞습니다. */
+  tiny?: boolean;
   block?: boolean;
 }) {
   return (
@@ -39,9 +46,11 @@ export function Button({
       {...rest}
       className={cx(
         "ui-btn",
+        variant === "soft" && "ui-btn--soft",
         variant === "ghost" && "ui-btn--ghost",
         variant === "danger" && "ui-btn--danger",
         small && "ui-btn--sm",
+        tiny && "ui-btn--xs",
         block && "ui-btn--block",
         className
       )}
@@ -64,6 +73,7 @@ export function LinkButton({
       {...rest}
       className={cx(
         "ui-btn",
+        variant === "soft" && "ui-btn--soft",
         variant === "ghost" && "ui-btn--ghost",
         variant === "danger" && "ui-btn--danger",
         small && "ui-btn--sm",

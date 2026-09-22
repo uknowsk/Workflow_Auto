@@ -207,6 +207,32 @@ code {
   color: var(--muted);
   font-size: var(--text-sm);
 }
+/* 맨 위 바의 «앱스토어». 아래 메뉴 줄(대시보드·도구 …)은 내 작업 공간이고
+   앱스토어는 거기에 앱을 가져오는 곳이라, 일부러 한 단계 위에 둡니다. */
+.ui-topbar__store {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--ink-2);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  white-space: nowrap;
+}
+.ui-topbar__store:hover {
+  text-decoration: none;
+  border-color: var(--accent);
+  color: var(--ink);
+}
+.ui-topbar__store[aria-current="page"] {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: transparent;
+}
+
 .ui-avatar {
   width: 24px;
   height: 24px;
@@ -383,6 +409,18 @@ code {
   filter: none;
 }
 
+/* 이미 한 번 한 일을 다시 여는 버튼. 예) 설치한 앱의 «열기».
+   채운 초록(설치)과 빨강(삭제) 사이에서 한눈에 구분되도록 연한 초록입니다. */
+.ui-btn--soft {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: var(--accent-line);
+}
+.ui-btn--soft:hover {
+  background: var(--bg);
+  filter: none;
+}
+
 /* 위험한 동작 */
 .ui-btn--danger {
   background: var(--bg);
@@ -397,6 +435,16 @@ code {
 .ui-btn--sm {
   padding: 6px var(--space-3);
   font-size: 12px;
+}
+
+/* 제목 옆에 붙는 아주 작은 버튼. 높이를 제목 한 줄(20px)에 딱 맞춰
+   글자 기준선이 제목과 같은 줄에 놓이게 합니다. */
+.ui-btn--xs {
+  height: 20px;
+  padding: 0 9px;
+  font-size: var(--text-xs);
+  border-radius: var(--radius-sm);
+  gap: 4px;
 }
 .ui-btn--block {
   width: 100%;
@@ -687,6 +735,7 @@ code {
   margin: 0;
   font-size: var(--text-base);
   font-weight: 500;
+  line-height: 20px;   /* 옆에 붙는 작은 버튼(.ui-btn--xs)과 같은 높이 */
 }
 .ui-app__desc {
   margin: 3px 0 0;
