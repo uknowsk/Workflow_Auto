@@ -26,6 +26,7 @@ const GROUPS: { label: string; items: NavTabItem[] }[] = [
       { href: "/recipes", label: "레시피" },
       { href: "/schedules", label: "예약" },
       { href: "/forms", label: "양식" },
+      { href: "/appliances", label: "가전 신제품" },
     ],
   },
   {

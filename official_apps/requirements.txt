@@ -8,3 +8,4 @@ python-docx==1.2.0
 python-pptx==1.0.2
 # 세계 시계용 시간대 정보 (slim 이미지에는 없습니다)
 tzdata==2024.2
+beautifulsoup4==4.12.3

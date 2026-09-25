@@ -96,6 +96,18 @@
       "owner": "로아빠",
       "owner_dept": "플랫폼개발팀",
       "icon": "🧾"
+    },
+    {
+      "slug": "appliance-watch",
+      "name": "가전 신제품 조사",
+      "endpoint": "http://app-appliance-watch:9119/mcp",
+      "description": "대륙별 탑 5 가전사(예: 북미 GE·Whirlpool·Samsung·LG·Frigidaire)의 공식 홈페이지에서 품목별(조리기기·냉장고·세탁기 등) 신제품을 스스로 찾아, 가격·POD(차별점)·제품 스펙을 정리하고 가격대(보급형·중급형·프리미엄·최고급)별로 비교합니다. 감시 목록을 등록하면 주기적으로 다시 확인합니다.",
+      "usage_hint": "해외 가전 경쟁사 신제품, 가격대별 비교, POD·스펙 정리가 필요할 때 사용",
+      "category": "시장조사",
+      "capability_tag": "가전신제품조사",
+      "owner": "로아빠",
+      "owner_dept": "플랫폼개발팀",
+      "icon": "🔎"
     }
   ]
 }

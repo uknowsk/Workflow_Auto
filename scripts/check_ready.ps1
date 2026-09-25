@@ -255,7 +255,7 @@ if ($script:HaveDocker -and $LASTEXITCODE -eq 0) {
 
 # ── 6. 포트 ───────────────────────────────────────────────────────
 Section "6. 포트 비어 있나"
-$ports = @(3000,8000,9001,9101,9102,9103,9111,9112,9113,9114,9115,9116,9117,9118)
+$ports = @(3000,8000,9001,9101,9102,9103,9111,9112,9113,9114,9115,9116,9117,9118,9119)
 $busy = @()
 foreach ($p in $ports) {
   try { if (Get-NetTCPConnection -LocalPort $p -State Listen -ErrorAction SilentlyContinue) { $busy += $p } } catch {}

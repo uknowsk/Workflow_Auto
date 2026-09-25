@@ -1,4 +1,4 @@
-// 공식 앱(사내 메일, 할 일)의 화면용 API.
+// 공식 앱(사내 메일, 할 일, 가전 신제품 조사)의 화면용 API.
 //
 // 이 앱들은 플랫폼 안이 아니라 "등록된 앱"이라서, 백엔드(8000)를 거치지 않고
 // 자기 주소로 바로 부릅니다. 주소는 .env 의 NEXT_PUBLIC_MAIL_API /
@@ -8,6 +8,8 @@ export const MAIL_API =
   process.env.NEXT_PUBLIC_MAIL_API || "http://localhost:9101";
 export const TASKS_API =
   process.env.NEXT_PUBLIC_TASKS_API || "http://localhost:9103";
+export const APPLIANCE_API =
+  process.env.NEXT_PUBLIC_APPLIANCE_API || "http://localhost:9119";
 
 async function call<T>(base: string, path: string, init: RequestInit = {}): Promise<T> {
   const response = await fetch(`${base}${path}`, {
@@ -95,4 +97,135 @@ export const tasksApi = {
     call<Task>(TASKS_API, "/api/tasks", { method: "POST", body: JSON.stringify(body) }),
   complete: (id: string) =>
     call<unknown>(TASKS_API, `/api/tasks/${id}/complete`, { method: "POST" }),
+};
+
+// ── 가전 신제품 조사 ────────────────────────────────────────────────────
+export type Maker = { name: string; site: string };
+
+export type ApplianceCatalog = {
+  regions: { key: string; label: string; currency: string; makers: Maker[] }[];
+  categories: {
+    key: string;
+    label: string;
+    bands: { label: string; min_usd: number; max_usd: number | null }[];
+  }[];
+  search_enabled: boolean;
+  llm_enabled: boolean;
+};
+
+export type Product = {
+  id: string;
+  url: string;
+  maker: string;
+  region: string;
+  category: string;
+  name: string;
+  model: string;
+  price: number | null;
+  currency: string;
+  price_usd: number | null;
+  band: string;
+  image: string;
+  release_date: string;
+  is_new: boolean;
+  new_reason: string;
+  pods: string[];
+  pod_method: "llm" | "rule";
+  specs: Record<string, string>;
+  features: string[];
+  first_seen: string;
+  last_seen: string;
+  found_via: string;
+};
+
+export type PriceBand = {
+  label: string;
+  min_usd: number | null;
+  max_usd: number | null;
+  count: number;
+  median_usd: number | null;
+  makers: Record<string, number>;
+  products: Product[];
+};
+
+export type Comparison = {
+  total: number;
+  mode: "fixed" | "quantile";
+  bands: PriceBand[];
+  unpriced: Product[];
+  spec_keys: string[];
+};
+
+export type Source = {
+  id: string;
+  maker: string;
+  region: string;
+  category: string;
+  type: "sitemap" | "listing" | "search" | "manual";
+  url: string;
+  hits: number;
+  score: number;
+  last_checked: string;
+};
+
+export type Watch = {
+  id: string;
+  region: string;
+  category: string;
+  makers: string[];
+  every_hours: number;
+  last_run: string;
+  last_result: string;
+};
+
+export type ScanResult = {
+  ok: boolean;
+  error?: string;
+  product_count: number;
+  new_count: number;
+  log: string[];
+};
+
+const qs = (params: Record<string, string | boolean | string[]>) =>
+  new URLSearchParams(
+    Object.entries(params).map(([k, v]) => [k, Array.isArray(v) ? v.join(",") : String(v)])
+  ).toString();
+
+export const applianceApi = {
+  catalog: () => call<ApplianceCatalog>(APPLIANCE_API, "/api/catalog"),
+  setMakers: (region: string, makers: Maker[]) =>
+    call<{ ok: boolean; makers: Maker[] }>(APPLIANCE_API, "/api/makers", {
+      method: "POST",
+      body: JSON.stringify({ region, makers }),
+    }),
+  scan: (region: string, category: string, makers: string[], maxPerMaker: number) =>
+    call<ScanResult>(APPLIANCE_API, "/api/scan", {
+      method: "POST",
+      body: JSON.stringify({ region, category, makers, max_per_maker: maxPerMaker }),
+    }),
+  compare: (region: string, category: string, makers: string[], mode: string, onlyNew: boolean) =>
+    call<Comparison>(
+      APPLIANCE_API,
+      `/api/compare?${qs({ region, category, makers, mode, only_new: onlyNew })}`
+    ),
+  sources: (region: string, category: string) =>
+    call<{ count: number; sources: Source[] }>(
+      APPLIANCE_API,
+      `/api/sources?${qs({ region, category })}`
+    ),
+  addSource: (body: { maker: string; region: string; category: string; url: string }) =>
+    call<{ ok: boolean }>(APPLIANCE_API, "/api/sources", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  watches: () => call<{ watches: Watch[] }>(APPLIANCE_API, "/api/watches"),
+  addWatch: (body: { region: string; category: string; makers: string[]; every_hours: number }) =>
+    call<{ ok: boolean }>(APPLIANCE_API, "/api/watches", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  runWatch: (id: string) =>
+    call<ScanResult>(APPLIANCE_API, `/api/watches/${id}/run`, { method: "POST" }),
+  deleteWatch: (id: string) =>
+    call<{ ok: boolean }>(APPLIANCE_API, `/api/watches/${id}`, { method: "DELETE" }),
 };
