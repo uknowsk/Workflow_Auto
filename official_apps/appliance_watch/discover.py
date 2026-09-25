@@ -33,12 +33,14 @@ MAX_SITEMAPS = int(os.getenv("DISCOVER_MAX_SITEMAPS", "12"))
 MAX_LISTING_PAGES = int(os.getenv("DISCOVER_MAX_LISTING_PAGES", "4"))
 
 # 주소가 이렇게 생겼으면 "제품 한 개의 상세 페이지"일 가능성이 높습니다.
-#   /p/..., /product/..., 모델명처럼 영문+숫자가 섞인 긴 토막(WRS325SDHZ, JGB735SPSS)
-_PRODUCT_HINTS = re.compile(r"/(p|pd|product|products|produkt|produit|produto|model|sku)/", re.I)
-_MODEL_TOKEN = re.compile(r"(?=[a-z0-9-]*\d)(?=[a-z0-9-]*[a-z])[a-z0-9]{6,}", re.I)
+#   /p/..., /p.모델.html(Whirlpool), /product/...,
+#   모델명처럼 영문+숫자가 한 덩어리로 붙은 긴 토막(WRS325SDHZ, JGB735SPSS)
+#   "ranges-2026" 처럼 낱말과 연도가 하이픈으로 떨어져 있는 것은 모델명이 아닙니다.
+_PRODUCT_HINTS = re.compile(r"/(p|pd|product|products|produkt|produit|produto|model|sku)[/.]", re.I)
+_MODEL_TOKEN = re.compile(r"(?<![a-z0-9])(?=[a-z0-9]*\d)(?=[a-z0-9]*[a-z])[a-z0-9]{6,}", re.I)
 # 이런 주소는 제품이 아닙니다.
 _NOT_PRODUCT = re.compile(
-    r"(support|manual|parts|accessor|review|compare|faq|blog|recipe|warranty|"
+    r"(support|manual|parts|accessor|review|compar|faq|blog|recipe|warranty|"
     r"register|search|login|cart|promotion|offers|\.pdf$|\.jpg$|\.png$)",
     re.I,
 )

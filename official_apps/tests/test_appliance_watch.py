@@ -276,3 +276,40 @@ def test_화면용_주소로_조사하고_비교한다(fake_web):
     )
     assert added.json()["ok"]
     assert client.post("/api/sources", json={"url": "ftp://x"}).status_code == 400
+
+
+# ── 실제 사이트 주소 모양 (2026-09 검색으로 확인한 GE·Whirlpool 주소) ─────────
+REAL_PRODUCTS = [
+    "https://www.geappliances.com/appliance/GE-Profile-30-Smart-Slide-In-Front-Control-Gas-Double-Oven-Convection-Fingerprint-Resistant-Range-PGS960YPFS",
+    "https://www.whirlpool.com/kitchen/cooking/ranges/electric/p.30-inch-electric-range-with-steam-clean.wfes3330rs.html",
+    "https://www.whirlpool.com/kitchen/cooking/ranges/electric/p.WFES5030RB.html",
+]
+REAL_NOT_PRODUCTS = [
+    "https://www.geappliances.com/appliances/ge-profile-ranges/",
+    "https://www.geappliances.com/ge-appliances/kitchen/ranges/",
+    "https://www.whirlpool.com/kitchen/cooking/ranges/electric.html",
+    "https://www.whirlpool.com/kitchen/cooking/ranges/electric-comparison-chart.html",
+    "https://www.whirlpool.com/kitchen/cooking/ranges-2026-lineup.html",
+]
+
+
+@pytest.mark.parametrize("url", REAL_PRODUCTS)
+def test_실제_제품_주소는_조리기기_제품으로_본다(url):
+    assert discover.looks_like_product(url) and catalog.keyword_hit(url, "cooking")
+
+
+@pytest.mark.parametrize("url", REAL_NOT_PRODUCTS)
+def test_목록_비교표_연도_페이지는_제품이_아니다(url):
+    assert not discover.looks_like_product(url)
+
+
+def test_같은_모델이_주소_두개로_올라와도_한번만_센다(fake_web):
+    listing = f"{WP}/kitchen/cooking/ranges/"
+    twin = f"{WP}/kitchen/cooking/ranges/p.30-inch-electric-range.wfes5030rz.html"
+    fake_web[listing] = fake_web[listing].replace("</body>", f"<a href='{twin}'>same</a></body>")
+    page = fake_web[f"{WP}/kitchen/cooking/ranges/p.WFES5030RZ.html"]
+    fake_web[twin] = page.replace("<head>", "<head><meta itemprop='sku' content='WFES5030RZ'>")
+    fake_web[f"{WP}/kitchen/cooking/ranges/p.WFES5030RZ.html"] = fake_web[twin]
+
+    result = service.scan("north_america", "cooking", ["Whirlpool"])
+    assert result["product_count"] == 2

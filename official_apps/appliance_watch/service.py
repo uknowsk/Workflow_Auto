@@ -159,6 +159,7 @@ def _scan_maker(maker: dict, region: str, category: str, limit: int, log: list[s
     log.append(f"[{maker['name']}] 후보 페이지 {len(disc.candidates)}곳")
 
     products = []
+    seen_models: set[str] = set()
     for cand in disc.candidates[: limit * 3]:
         if len(products) >= limit:
             break
@@ -170,6 +171,12 @@ def _scan_maker(maker: dict, region: str, category: str, limit: int, log: list[s
         product = extract.extract_product(html, cand.url, currency)
         if not product:
             continue
+        # 같은 제품이 주소 두 개로 올라오는 사이트가 있습니다(Whirlpool: p.모델.html 과 긴 이름 주소).
+        # 모델명이 같으면 한 번만 셉니다.
+        model_key = (product.get("model") or "").upper()
+        if model_key and model_key in seen_models:
+            continue
+        seen_models.add(model_key)
         price_usd = catalog.to_usd(product["price"], product["currency"])
         product.update(
             {
