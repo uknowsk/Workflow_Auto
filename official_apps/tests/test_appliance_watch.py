@@ -342,6 +342,9 @@ def test_조사하면_가격_POD_스펙이_정리된다(fake_web):
     assert profile["is_new"] and profile["new_reason"] == "출시일 2026-08-20"
     assert "Edge-to-edge cooktop" not in profile["pods"]  # 모두 가진 특징은 차별점이 아님
     assert "Built-in air fry with no preheat" in profile["pods"]
+    # ai_features/energy_rating 필드가 저장까지 이어지는지(값이 없어도 키는 있어야 함).
+    assert "ai_features" in profile and isinstance(profile["ai_features"], list)
+    assert profile["ai_method"] in ("llm", "rule")
 
     old = by_model["JGB735SPSS"]
     assert old["is_new"] is False and old["band"] == "중급형"

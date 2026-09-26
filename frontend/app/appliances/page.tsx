@@ -118,6 +118,16 @@ function ProductCard({
           </ul>
         </div>
       )}
+      {product.ai_features?.length > 0 && (
+        <div style={{ marginTop: "var(--space-2)" }}>
+          <Muted>🤖 AI·연결 기능 {product.ai_method === "llm" ? "(LLM)" : "(규칙)"}</Muted>
+          <ul style={{ margin: 0, paddingLeft: "1.2em" }}>
+            {product.ai_features.map((f) => (
+              <li key={f}>{f}</li>
+            ))}
+          </ul>
+        </div>
+      )}
       {product.new_reason && <Muted style={{ marginTop: "var(--space-2)" }}>{product.new_reason}</Muted>}
       <div style={{ marginTop: "var(--space-2)" }}>
         <Checkbox label="스펙 비교에 담기" checked={picked} onChange={onPick} />
@@ -470,6 +480,12 @@ export default function Appliances() {
                         <td>POD</td>
                         {compareSet.map((p) => (
                           <td key={p.id}>{(p.pods || []).join(" / ")}</td>
+                        ))}
+                      </tr>
+                      <tr>
+                        <td>AI·연결 기능</td>
+                        {compareSet.map((p) => (
+                          <td key={p.id}>{(p.ai_features || []).join(" / ") || "–"}</td>
                         ))}
                       </tr>
                       <tr>
