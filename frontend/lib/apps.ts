@@ -192,21 +192,6 @@ export type ScanResult = {
   log: string[];
 };
 
-export type TrendItem = { title: string; url: string; published_at: string };
-export type TrendSignal = {
-  maker: string;
-  category: string;
-  news: (TrendItem & { source: string })[];
-  videos: (TrendItem & { channel: string })[];
-  youtube_enabled: boolean;
-};
-export type TrendResult = {
-  ok: boolean;
-  error?: string;
-  youtube_enabled: boolean;
-  signals: TrendSignal[];
-};
-
 const qs = (params: Record<string, string | boolean | string[]>) =>
   new URLSearchParams(
     Object.entries(params).map(([k, v]) => [k, Array.isArray(v) ? v.join(",") : String(v)])
@@ -223,11 +208,6 @@ export const applianceApi = {
     call<ScanResult>(APPLIANCE_API, "/api/scan", {
       method: "POST",
       body: JSON.stringify({ region, category, makers, max_per_maker: maxPerMaker }),
-    }),
-  trends: (region: string, category: string, makers: string[]) =>
-    call<TrendResult>(APPLIANCE_API, "/api/trends", {
-      method: "POST",
-      body: JSON.stringify({ region, category, makers }),
     }),
   compare: (region: string, category: string, makers: string[], mode: string, onlyNew: boolean) =>
     call<Comparison>(

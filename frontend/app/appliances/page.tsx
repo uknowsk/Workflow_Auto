@@ -13,7 +13,6 @@ import {
   Comparison,
   Product,
   Source,
-  TrendResult,
   Watch,
   applianceApi,
 } from "@/lib/apps";
@@ -157,8 +156,6 @@ export default function Appliances() {
   const [error, setError] = useState("");
   const [sourceMaker, setSourceMaker] = useState("");
   const [sourceUrl, setSourceUrl] = useState("");
-  const [trendResult, setTrendResult] = useState<TrendResult | null>(null);
-  const [trendBusy, setTrendBusy] = useState(false);
 
   const regionInfo = catalog?.regions.find((r) => r.key === region);
   const regionMakers = regionInfo?.makers ?? [];
@@ -238,19 +235,6 @@ export default function Appliances() {
       setError(String(e));
     } finally {
       setBusy(false);
-    }
-  };
-
-  const checkTrends = async () => {
-    setTrendBusy(true);
-    setError("");
-    try {
-      const result = await applianceApi.trends(region, category, makers);
-      setTrendResult(result);
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      setTrendBusy(false);
     }
   };
 
@@ -349,14 +333,6 @@ export default function Appliances() {
             <Button onClick={scan} disabled={busy || makers.length === 0 || !catalog}>
               {busy ? "홈페이지 돌아보는 중… (몇 분 걸릴 수 있어요)" : "신제품 찾기"}
             </Button>
-            <Button
-              variant="soft"
-              onClick={checkTrends}
-              disabled={trendBusy || makers.length === 0 || !catalog}
-              title="아직 공식 홈페이지에 안 올라온 발표 직후 신제품도 뉴스·유튜브로 먼저 포착합니다"
-            >
-              {trendBusy ? "뉴스·유튜브 찾는 중…" : "📰 최근 화제"}
-            </Button>
           </Row>
           <Row>
             <Select
@@ -384,50 +360,6 @@ export default function Appliances() {
           </Muted>
         )}
       </Card>
-
-      {trendResult && trendResult.ok && (
-        <Card className="ui-card--pad-lg" style={{ marginTop: "var(--space-4)" }}>
-          <SectionHead
-            label="최근 화제 (뉴스·유튜브)"
-            note="제품 페이지가 아니라 언론·영상 언급이라 가격·모델은 없어요 — 홈페이지에 아직 안 올라온 신제품을 먼저 알아채는 용도예요"
-          />
-          {!trendResult.youtube_enabled && (
-            <Muted>유튜브 검색은 꺼져 있어요(YOUTUBE_API_KEY 없음) · 뉴스만 보여줘요</Muted>
-          )}
-          {trendResult.signals.map((s) => (
-            <div key={s.maker} style={{ marginTop: "var(--space-3)" }}>
-              <b>{s.maker}</b>
-              {s.news.length === 0 && s.videos.length === 0 && (
-                <Muted style={{ marginLeft: "var(--space-2)" }}>최근 소식 없음</Muted>
-              )}
-              {s.news.length > 0 && (
-                <ul style={{ margin: "var(--space-1) 0", paddingLeft: "1.2em" }}>
-                  {s.news.map((n) => (
-                    <li key={n.url}>
-                      <a href={n.url} target="_blank" rel="noreferrer">
-                        {n.title}
-                      </a>
-                      <Muted> · {n.source}</Muted>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              {s.videos.length > 0 && (
-                <ul style={{ margin: "var(--space-1) 0", paddingLeft: "1.2em" }}>
-                  {s.videos.map((v) => (
-                    <li key={v.url}>
-                      ▶ <a href={v.url} target="_blank" rel="noreferrer">
-                        {v.title}
-                      </a>
-                      <Muted> · {v.channel}</Muted>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          ))}
-        </Card>
-      )}
 
       {message && (
         <Alert tone="ok" style={{ marginTop: "var(--space-4)" }}>

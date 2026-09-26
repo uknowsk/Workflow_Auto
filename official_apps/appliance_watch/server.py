@@ -81,25 +81,6 @@ def scan_new_products(region: str, category: str, makers: str = "", max_per_make
 
 
 @mcp.tool()
-def scan_trend_signals(region: str, category: str, makers: str = "") -> dict:
-    """이 대륙·품목에서 고른 회사들의 최근 뉴스·유튜브 언급을 찾습니다(제품 스캔의 보조 신호).
-
-    scan_new_products 와 달리 제품 페이지를 읽지 않아 가격·모델은 안 나오고,
-    "요즘 이 회사가 이 품목으로 얼마나 화제인지"만 뉴스 제목·영상 제목으로
-    보여줍니다. 아직 공식 홈페이지에 안 올라온 발표 직후 신제품을 먼저
-    포착하고 싶을 때 씁니다. 뉴스는 항상 되고, 유튜브는 YOUTUBE_API_KEY 가
-    설정돼 있을 때만 됩니다(안 돼 있으면 조용히 빈 목록).
-
-    Args:
-        region: 대륙
-        category: 품목
-        makers: 일부 회사만 볼 때 쉼표로. 비우면 이 대륙에서 고른 회사 전부
-    """
-    names = [m.strip() for m in makers.split(",") if m.strip()]
-    return service.trend_signals(region, category, names or None)
-
-
-@mcp.tool()
 def compare_by_price(region: str = "", category: str = "cooking", mode: str = "fixed", only_new: bool = False) -> dict:
     """저장된 제품을 가격대(보급형·중급형·프리미엄·최고급)로 나눠 비교합니다.
 
@@ -207,21 +188,6 @@ async def api_scan(request: Request):
             body.get("category", ""),
             _makers_param(body.get("makers")) or None,
             int(body.get("max_per_maker") or 0),
-        )
-    )
-    return JSONResponse(result, status_code=200 if result.get("ok") else 400)
-
-
-@mcp.custom_route("/api/trends", methods=["POST"])
-async def api_trends(request: Request):
-    import anyio
-
-    body = await _body(request)
-    result = await anyio.to_thread.run_sync(
-        lambda: service.trend_signals(
-            body.get("region", ""),
-            body.get("category", ""),
-            _makers_param(body.get("makers")) or None,
         )
     )
     return JSONResponse(result, status_code=200 if result.get("ok") else 400)

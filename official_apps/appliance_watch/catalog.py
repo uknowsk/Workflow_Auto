@@ -63,6 +63,20 @@ GLOBAL_BRANDS: list[dict] = [
 # 비어 있으면(또는 그 대륙 키가 아예 없으면) 화면에서 채우거나 검색 API 가
 # 스스로 찾습니다. 그동안은 "홈페이지를 모릅니다" 로 조용히 넘어가고 나머지
 # 19개 브랜드는 그대로 조사됩니다 — 하나가 비어 있다고 전체가 막히지 않습니다.
+#
+# 확인 상태(2026-09-26, 개발 중 샌드박스에서 실제로 열어 본 결과 — 이 샌드박스는
+# whirlpool.com·geappliances.com 딱 두 곳 말고는 위키백과·검색엔진까지 막혀 있어서
+# 대부분은 열어 보지 못했습니다. "확인 못 함" 은 "틀렸다"는 뜻이 아니라 이
+# 환경에서 접속 자체가 막혔다는 뜻입니다):
+#   확인됨(실제로 열림) — Whirlpool, GE Appliances, Samsung(5개 지역 전부),
+#     KitchenAid(.com), Frigidaire(.com) — 뒤 둘은 지금은 봇 차단(503)이지만
+#     주소 자체는 진짜입니다(whirlpool.com 도 이랬다가 브라우저 우회로 풀렸던
+#     것과 같은 상황).
+#   확인 못 함(이 환경 네트워크 정책 때문) — 나머지 전부(LG, Bosch, Electrolux,
+#     Haier, Midea, Panasonic, Hisense, Miele, AEG, Viking, Sub-Zero/Wolf,
+#     Thermador, Fisher&Paykel, Beko, Gorenje). 실제로 켜기 전에 한 번씩
+#     열어서 확인하세요. 이 세션에서 직접 확인하려면 환경의 네트워크 접근
+#     범위를 넓혀 주세요.
 BRAND_SITES: dict[str, dict[str, str]] = {
     "Samsung": {
         "north_america": "https://www.samsung.com/us",
@@ -93,7 +107,10 @@ BRAND_SITES: dict[str, dict[str, str]] = {
     "Midea": {"asia": "https://www.midea.com"},
     "Panasonic": {
         "asia": "https://panasonic.jp",
-        "europe": "https://www.panasonic.com/uk/consumer.html",
+        # 정확한 하위 경로(예: /uk/consumer.html)는 자주 바뀌어서 실제로 켜기
+        # 전에 확인이 필요합니다. 홈페이지 최상단 주소만 주면 discover.py 가
+        # 메뉴를 따라가며 스스로 하위 품목 페이지를 찾습니다.
+        "europe": "https://www.panasonic.com/uk",
     },
     "Hisense": {"north_america": "https://www.hisense-usa.com"},
     "Miele": {
@@ -102,7 +119,8 @@ BRAND_SITES: dict[str, dict[str, str]] = {
     },
     "KitchenAid": {
         "north_america": "https://www.kitchenaid.com",
-        "europe": "https://www.kitchenaid.co.uk",
+        # 유럽은 kitchenaid.co.uk 인지 kitchenaid.eu(국가 선택형)인지 확인이 안 돼서
+        # 비워 뒀습니다. 화면에서 채우거나 SEARCH_PROVIDER 가 찾게 하세요.
     },
     "AEG": {"europe": "https://www.aeg.co.uk"},
     "Viking": {"north_america": "https://www.vikingrange.com"},
