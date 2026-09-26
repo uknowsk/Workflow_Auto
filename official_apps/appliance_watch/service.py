@@ -16,7 +16,7 @@ from datetime import date, datetime, timedelta, timezone
 
 from common.store import Store, now_iso
 
-from . import catalog, discover, extract, pod, web
+from . import catalog, discover, extract, pod, trend, web
 
 NEW_WITHIN_DAYS = int(os.getenv("NEW_WITHIN_DAYS", "180"))
 MAX_PER_MAKER = int(os.getenv("SCAN_MAX_PER_MAKER", "8"))
@@ -267,6 +267,30 @@ def scan(region: str, category: str, makers: list[str] | None = None, max_per_ma
 
 def recent_scans(limit: int = 10) -> list[dict]:
     return list(reversed(store.list("scan")))[:limit]
+
+
+# ── 뉴스·유튜브 트렌드 (제품 스캔의 보조 신호) ────────────────────────────
+def trend_signals(region: str, category: str, makers: list[str] | None = None, limit: int = 5) -> dict:
+    """이 대륙·품목에서 고른 회사들의 최근 뉴스·유튜브 언급을 모읍니다.
+
+    scan() 과 달리 제품 페이지를 읽지 않고, 그래서 가격·모델도 만들지
+    않습니다 — "요즘 이 회사가 화제인지"만 곁들이는 참고 자료입니다.
+    """
+    if region not in catalog.REGIONS:
+        return {"ok": False, "error": f"모르는 대륙입니다: {region}"}
+    if category not in catalog.CATEGORIES:
+        return {"ok": False, "error": f"모르는 품목입니다: {category}"}
+    category_label = catalog.CATEGORIES[category]["label"]
+    all_makers = region_makers(region)
+    chosen = [m["name"] for m in all_makers if not makers or m["name"] in makers]
+    signals = [trend.trend_signals(name, category_label, limit) for name in chosen]
+    return {
+        "ok": True,
+        "region": region,
+        "category": category,
+        "youtube_enabled": bool(trend.YOUTUBE_API_KEY),
+        "signals": signals,
+    }
 
 
 # ── 가격대 비교 ────────────────────────────────────────────────────────

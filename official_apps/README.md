@@ -66,7 +66,8 @@ approvals/       결재 추적
 docs_assistant/  문서 요약·번역 (사내 LLM 사용)
 report_forms/    보고서 양식 제작 (catalog.py 에 종류·항목 표, builder.py 가 파일 생성)
 appliance_watch/ 가전 신제품 조사 (catalog.py 대륙·글로벌탑20·품목·가격대 표, discover.py 출처 찾기,
-                 extract.py 제품 페이지 읽기, pod.py 차별점, service.py 전체 흐름)
+                 extract.py 제품 페이지 읽기, pod.py 차별점·AI기능·에너지효율 정리,
+                 trend.py 뉴스·유튜브 화제 신호, service.py 전체 흐름)
 
 meeting/         회의록 정리   (시나리오 앱, 자기 이미지·requirements 를 따로 씀)
 tasks/           할 일/수명업무 (시나리오 앱)
@@ -356,6 +357,14 @@ TASKS_DB=./tasks.db PORT=9103 python server.py
 
 **주기 확인**: 화면에서 매일/매주/매월을 골라 등록하면 앱이 알아서 돌립니다
 (`WATCH_SCHEDULER=false` 로 끄고 플랫폼 «예약»에서 `run_due_watches` 를 불러도 됩니다).
+
+**최근 화제(뉴스·유튜브)** — 공식 홈페이지에는 아직 안 올라온 발표 직후 신제품을
+먼저 포착하는 보조 신호입니다(`trend.py`). 제품 페이지를 읽는 게 아니라서
+가격·모델은 안 나오고, 뉴스 제목·유튜브 영상 제목만 보여줍니다.
+
+- 뉴스(Google News RSS)는 API 키 없이 기본으로 켜져 있습니다(`TREND_NEWS_ENABLED=false` 로 끔).
+- 유튜브는 `YOUTUBE_API_KEY` 가 있어야 되고, 없으면 조용히 빈 목록입니다.
+- 화면의 «📰 최근 화제» 버튼, MCP 의 `scan_trend_signals`, `/api/trends` 로 씁니다.
 
 주의할 점
 - 바깥 인터넷이 필요합니다. 폐쇄망이면 `.env` 에 `HTTPS_PROXY` 를 넣으세요.

@@ -9,7 +9,7 @@ import json
 import pytest
 from starlette.testclient import TestClient
 
-from appliance_watch import catalog, discover, extract, pod, service, web
+from appliance_watch import catalog, discover, extract, pod, service, trend, web
 
 GE = "https://www.geappliances.com"
 WP = "https://www.whirlpool.com"
@@ -460,3 +460,122 @@ def test_같은_모델이_주소_두개로_올라와도_한번만_센다(fake_we
 
     result = service.scan("north_america", "cooking", ["Whirlpool"])
     assert result["product_count"] == 2
+
+
+# ── 뉴스·유튜브 트렌드(제품 스캔의 보조 신호) ─────────────────────────────
+_NEWS_RSS_SAMPLE = """<?xml version="1.0"?>
+<rss version="2.0"><channel>
+<item>
+  <title>Whirlpool unveils new induction range</title>
+  <link>https://news.example.com/a</link>
+  <pubDate>Wed, 01 Jan 2026 00:00:00 GMT</pubDate>
+  <source>Example News</source>
+</item>
+<item>
+  <title>Whirlpool Q4 earnings beat estimates</title>
+  <link>https://news.example.com/b</link>
+  <pubDate>Tue, 31 Dec 2025 00:00:00 GMT</pubDate>
+  <source>Example Wire</source>
+</item>
+</channel></rss>"""
+
+
+def test_뉴스_RSS를_제목_링크_출처로_정리한다(monkeypatch):
+    def fake_get(url, params):
+        assert url == trend.GOOGLE_NEWS_RSS
+        assert "Whirlpool" in params["q"]
+
+        class Resp:
+            text = _NEWS_RSS_SAMPLE
+
+            def raise_for_status(self):
+                pass
+
+        return Resp()
+
+    monkeypatch.setattr(trend, "_get", fake_get)
+    items = trend.fetch_google_news("Whirlpool cooking", limit=5)
+    assert items[0] == {
+        "title": "Whirlpool unveils new induction range",
+        "url": "https://news.example.com/a",
+        "published_at": "Wed, 01 Jan 2026 00:00:00 GMT",
+        "source": "Example News",
+    }
+    assert len(items) == 2
+
+
+def test_뉴스_요청이_실패해도_빈_목록으로_넘어간다(monkeypatch):
+    def boom(url, params):
+        raise RuntimeError("network down")
+
+    monkeypatch.setattr(trend, "_get", boom)
+    assert trend.fetch_google_news("아무거나") == []
+
+
+def test_유튜브는_API_키가_없으면_조용히_빈_목록이다(monkeypatch):
+    monkeypatch.setattr(trend, "YOUTUBE_API_KEY", "")
+    assert trend.fetch_youtube_trends("Whirlpool range") == []
+
+
+def test_유튜브_키가_있으면_영상_목록을_정리한다(monkeypatch):
+    monkeypatch.setattr(trend, "YOUTUBE_API_KEY", "fake-key")
+
+    def fake_get(url, params):
+        assert url == trend.YOUTUBE_SEARCH_API
+        assert params["key"] == "fake-key"
+
+        class Resp:
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return {
+                    "items": [
+                        {
+                            "id": {"videoId": "abc123"},
+                            "snippet": {
+                                "title": "Whirlpool Range Review 2026",
+                                "publishedAt": "2026-01-01T00:00:00Z",
+                                "channelTitle": "Review Channel",
+                            },
+                        }
+                    ]
+                }
+
+        return Resp()
+
+    monkeypatch.setattr(trend, "_get", fake_get)
+    items = trend.fetch_youtube_trends("Whirlpool range")
+    assert items == [
+        {
+            "title": "Whirlpool Range Review 2026",
+            "url": "https://www.youtube.com/watch?v=abc123",
+            "published_at": "2026-01-01T00:00:00Z",
+            "channel": "Review Channel",
+        }
+    ]
+
+
+def test_트렌드_신호는_뉴스와_유튜브를_합친다(monkeypatch):
+    monkeypatch.setattr(trend, "fetch_google_news", lambda q, limit=5: [{"title": "news"}])
+    monkeypatch.setattr(trend, "fetch_youtube_trends", lambda q, limit=5: [{"title": "video"}])
+    monkeypatch.setattr(trend, "YOUTUBE_API_KEY", "")
+    result = trend.trend_signals("Whirlpool", "조리기기")
+    assert result["maker"] == "Whirlpool"
+    assert result["news"] == [{"title": "news"}]
+    assert result["videos"] == [{"title": "video"}]
+    assert result["youtube_enabled"] is False
+
+
+def test_대륙_품목_고르면_회사별_트렌드_신호를_모은다(fake_web, monkeypatch):
+    monkeypatch.setattr(trend, "fetch_google_news", lambda q, limit=5: [{"title": q}])
+    monkeypatch.setattr(trend, "fetch_youtube_trends", lambda q, limit=5: [])
+    result = service.trend_signals("north_america", "cooking", ["Whirlpool"])
+    assert result["ok"]
+    assert len(result["signals"]) == 1
+    assert result["signals"][0]["maker"] == "Whirlpool"
+
+
+def test_트렌드도_모르는_대륙_품목은_알려준다():
+    assert service.trend_signals("화성", "cooking")["ok"] is False
+    assert service.trend_signals("north_america", "화성품목")["ok"] is False
