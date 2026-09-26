@@ -84,6 +84,20 @@
   .sw-line { margin: 4px 0; font-size: 13px; }
   .sw-line .win { color: var(--ok); font-weight: 600; }
   .sw-line .lose { color: var(--danger); font-weight: 600; }
+  .bm-cols { display: flex; gap: 20px; flex-wrap: wrap; align-items: flex-start; margin-top: 10px; }
+  .bm-radar { flex: 0 0 260px; }
+  .bm-radar svg { width: 100%; height: auto; }
+  .bm-radar-legend { font-size: 12px; margin-top: 4px; }
+  .bm-radar-legend span { display: inline-flex; align-items: center; gap: 4px; margin-right: 10px; }
+  .bm-radar-legend .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+  .bm-share { flex: 1 1 220px; min-width: 220px; }
+  .share-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 12.5px; }
+  .share-row .label { width: 90px; flex-shrink: 0; text-overflow: ellipsis; overflow: hidden; white-space: nowrap; }
+  .share-row .bar-track { flex: 1; background: var(--chip); border-radius: 5px; height: 10px; overflow: hidden; }
+  .share-row .bar-fill { height: 100%; background: var(--muted); border-radius: 5px; }
+  .share-row.is-target .bar-fill { background: var(--accent); }
+  .share-row.is-target .label { font-weight: 700; }
+  .share-row .pct { width: 54px; text-align: right; flex-shrink: 0; color: var(--muted); }
 </style>
 </head>
 <body>
@@ -288,6 +302,90 @@ function bmAxisRow(row) {
   </tr>`;
 }
 
+const RADAR_COLORS = ["#0f766e", "#c2410c", "#7c3aed", "#0369a1", "#a16207", "#be185d"];
+
+function radarPolygon(cx, cy, R, axes, radar) {
+  const n = axes.length;
+  return axes
+    .map((ax, i) => {
+      const v = radar[ax.key];
+      const r = R * (v == null ? 0 : v);
+      const angle = -Math.PI / 2 + (i * 2 * Math.PI) / n;
+      return `${(cx + r * Math.cos(angle)).toFixed(1)},${(cy + r * Math.sin(angle)).toFixed(1)}`;
+    })
+    .join(" ");
+}
+
+function radarSvg(bm) {
+  const axes = bm.radar_axes;
+  const n = axes.length;
+  const cx = 120, cy = 120, R = 95;
+  const spokes = axes
+    .map((_, i) => {
+      const angle = -Math.PI / 2 + (i * 2 * Math.PI) / n;
+      return `<line x1="${cx}" y1="${cy}" x2="${(cx + R * Math.cos(angle)).toFixed(1)}" y2="${(cy + R * Math.sin(angle)).toFixed(1)}" stroke="#d8dbe0" stroke-width="1"/>`;
+    })
+    .join("");
+  const rings = [0.25, 0.5, 0.75, 1].map((f) => {
+    const pts = axes
+      .map((_, i) => {
+        const angle = -Math.PI / 2 + (i * 2 * Math.PI) / n;
+        return `${(cx + R * f * Math.cos(angle)).toFixed(1)},${(cy + R * f * Math.sin(angle)).toFixed(1)}`;
+      })
+      .join(" ");
+    return `<polygon points="${pts}" fill="none" stroke="#e5e7eb" stroke-width="1"/>`;
+  }).join("");
+  const labels = axes
+    .map((ax, i) => {
+      const angle = -Math.PI / 2 + (i * 2 * Math.PI) / n;
+      const x = cx + (R + 16) * Math.cos(angle);
+      const y = cy + (R + 16) * Math.sin(angle);
+      const anchor = Math.cos(angle) > 0.3 ? "start" : Math.cos(angle) < -0.3 ? "end" : "middle";
+      return `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" font-size="9" fill="#6b7280" text-anchor="${anchor}" dominant-baseline="middle">${esc(ax.label)}</text>`;
+    })
+    .join("");
+  const peers = (bm.rows || []).slice(0, 5);
+  const peerPolys = peers
+    .map((row, i) => {
+      const color = RADAR_COLORS[(i + 1) % RADAR_COLORS.length];
+      const pts = radarPolygon(cx, cy, R, axes, row.radar);
+      return `<polygon points="${pts}" fill="${color}22" stroke="${color}" stroke-width="1.5"/>`;
+    })
+    .join("");
+  const targetPts = radarPolygon(cx, cy, R, axes, bm.target.radar);
+  const targetPoly = `<polygon points="${targetPts}" fill="${RADAR_COLORS[0]}33" stroke="${RADAR_COLORS[0]}" stroke-width="2.5"/>`;
+
+  const legend = `
+    <div class="bm-radar-legend">
+      <span><span class="dot" style="background:${RADAR_COLORS[0]}"></span>${esc(bm.target.maker || "대상")}</span>
+      ${peers.map((row, i) => `<span><span class="dot" style="background:${RADAR_COLORS[(i + 1) % RADAR_COLORS.length]}"></span>${esc(row.maker || "")}</span>`).join("")}
+    </div>
+    <div class="muted" style="font-size:11px;">값이 없는 축은 중심(0)으로 그립니다 · 이 가격대 안에서의 상대 위치입니다</div>`;
+
+  return `<svg viewBox="0 0 240 240">${rings}${spokes}${peerPolys}${targetPoly}${labels}</svg>${legend}`;
+}
+
+function marketShareView(bm) {
+  const rows = bm.market_share || [];
+  if (!rows.length) return "";
+  const max = Math.max(...rows.map((r) => r.share_pct), 1);
+  return `
+    <div class="bm-share">
+      <b style="font-size:13px;">이 가격대의 브랜드 비중</b>
+      <div class="muted" style="font-size:11px; margin-bottom:8px;">${esc(bm.market_share_note || "")}</div>
+      ${rows
+        .map(
+          (r) => `
+        <div class="share-row${r.is_target ? " is-target" : ""}">
+          <span class="label" title="${esc(r.maker)}">${esc(r.maker)}</span>
+          <span class="bar-track"><span class="bar-fill" style="width:${(r.share_pct / max) * 100}%"></span></span>
+          <span class="pct">${r.share_pct}% (${r.count})</span>
+        </div>`
+        )
+        .join("")}
+    </div>`;
+}
+
 async function showBenchmark(url) {
   showError(""); showMessage("");
   try {
@@ -302,6 +400,10 @@ async function showBenchmark(url) {
         ${bm.strengths.length ? `<div class="sw-line">강점: ${bm.strengths.map((s) => `<span class="win">${esc(s)}</span>`).join(", ")}</div>` : ""}
         ${bm.weaknesses.length ? `<div class="sw-line">약점: ${bm.weaknesses.map((s) => `<span class="lose">${esc(s)}</span>`).join(", ")}</div>` : ""}
         ${!bm.strengths.length && !bm.weaknesses.length ? `<div class="muted sw-line">뚜렷한 강점·약점 없이 팽팽합니다.</div>` : ""}
+        <div class="bm-cols">
+          <div class="bm-radar">${radarSvg(bm)}</div>
+          ${marketShareView(bm)}
+        </div>
         ${bm.peer_count ? `
         <table class="bm-table">
           <thead><tr><th>경쟁 제품</th>${axes.map(([, label]) => `<th>${esc(label)}</th>`).join("")}</tr></thead>

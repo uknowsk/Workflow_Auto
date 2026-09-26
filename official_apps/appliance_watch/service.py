@@ -450,6 +450,29 @@ def _bm_verdict(target_value: float | None, peer_value: float | None, axis: str)
     return "우위" if diff > 0 else "열세"
 
 
+def _bm_normalize(values: dict[str, float | None], axis: str) -> dict[str, float | None]:
+    """스파이더맵(레이더 차트)용: 축마다 이 가격대 안에서 0~1 로 맞춥니다.
+
+    값이 없으면 None(차트에서 그 꼭짓점을 건너뜁니다). 가장 유리한 쪽이
+    항상 1(바깥쪽), 가장 불리한 쪽이 0(안쪽)이 되도록 "낮을수록 유리"인
+    축(가격)은 방향을 뒤집습니다. 이 가격대 안의 상대 위치일 뿐, 절대
+    점수가 아닙니다.
+    """
+    known = [v for v in values.values() if v is not None]
+    if not known:
+        return dict(values)
+    lo, hi = min(known), max(known)
+    span = hi - lo
+
+    def norm(v: float | None) -> float | None:
+        if v is None:
+            return None
+        ratio = 0.5 if span == 0 else (v - lo) / span
+        return round(1 - ratio if axis in _BM_LOWER_IS_BETTER else ratio, 4)
+
+    return {key: norm(v) for key, v in values.items()}
+
+
 def benchmark(url: str) -> dict:
     """이 제품(BM 대상)을 같은 가격대의 다른 제품들과 견줍니다.
 
@@ -457,6 +480,12 @@ def benchmark(url: str) -> dict:
     하나하나와 우위/동등/열세를 매기고, 우위가 많은 축을 강점(strengths)으로,
     열세가 많은 축을 약점(weaknesses)으로 정리합니다(SWOT 중 내부 요인 두 축 —
     기회·위협은 시장 전망 같은 이 앱 바깥의 판단이 필요해 다루지 않습니다).
+
+    스파이더맵(레이더 차트)용 0~1 정규화 값(radar)과, 이 가격대 안에서
+    제조사별로 제품이 몇 개나 잡혔는지(market_share) 를 같이 돌려줍니다.
+    market_share 는 실제 판매·매출 점유율이 아니라 **이 앱이 찾은 제품 수
+    기준 비중**입니다 — 진짜 시장점유율은 유료 시장조사 데이터라 이 앱이
+    긁어올 수 없습니다.
     """
     targets = store.list("product", url=url)
     if not targets:
@@ -469,6 +498,17 @@ def benchmark(url: str) -> dict:
         )
         if p["url"] != url
     ]
+
+    # 레이더 차트: 대상+경쟁 제품 전체를 축마다 한 번에 0~1 로 맞춥니다(쌍마다
+    # 다시 맞추면 제품이 늘 때마다 모양이 흔들려서, 우위/동등/열세 판정과는
+    # 따로 계산합니다).
+    entities = {"__target__": target, **{p["url"]: p for p in peers}}
+    radar_by_entity: dict[str, dict[str, float | None]] = {key: {} for key in entities}
+    for axis in _BM_AXES:
+        raw = {key: _bm_axis_value(p, axis) for key, p in entities.items()}
+        normalized = _bm_normalize(raw, axis)
+        for key in entities:
+            radar_by_entity[key][axis] = normalized[key]
 
     rows = []
     tally = {axis: Counter() for axis in _BM_AXES}
@@ -487,11 +527,25 @@ def benchmark(url: str) -> dict:
                 "price_usd": peer.get("price_usd"),
                 "url": peer["url"],
                 "axes": axes,
+                "radar": radar_by_entity[peer["url"]],
             }
         )
 
     strengths = [_BM_LABEL[a] for a in _BM_AXES if tally[a]["우위"] > tally[a]["열세"] and tally[a]["우위"] > 0]
     weaknesses = [_BM_LABEL[a] for a in _BM_AXES if tally[a]["열세"] > tally[a]["우위"] and tally[a]["열세"] > 0]
+
+    # 같은 가격대 안, 제조사별 "찾은 제품 수" 비중 (대상 제품도 하나로 셉니다).
+    share_counts = Counter([target.get("maker") or ""] + [p.get("maker") or "" for p in peers])
+    total_in_band = sum(share_counts.values())
+    market_share = [
+        {
+            "maker": maker,
+            "count": count,
+            "share_pct": round(count / total_in_band * 100, 1) if total_in_band else 0.0,
+            "is_target": maker == target.get("maker"),
+        }
+        for maker, count in share_counts.most_common()
+    ]
 
     return {
         "ok": True,
@@ -505,12 +559,16 @@ def benchmark(url: str) -> dict:
             "rating_value": target.get("rating_value"),
             "review_source": target.get("review_source"),
             "review_score": target.get("review_score"),
+            "radar": radar_by_entity["__target__"],
         },
         "peer_count": len(rows),
         "rows": rows,
         "axis_tally": {axis: dict(counts) for axis, counts in tally.items()},
         "strengths": strengths,
         "weaknesses": weaknesses,
+        "radar_axes": [{"key": a, "label": _BM_LABEL[a]} for a in _BM_AXES],
+        "market_share": market_share,
+        "market_share_note": "실제 매출·판매량 점유율이 아니라, 이 가격대에서 이 앱이 찾은 제품 수 기준 비중입니다.",
     }
 
 

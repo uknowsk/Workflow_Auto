@@ -12,6 +12,7 @@ import {
   ApplianceCatalog,
   Benchmark,
   BmAxis,
+  BmRadar,
   Comparison,
   Product,
   Source,
@@ -50,6 +51,166 @@ function verdictTone(v: string): Tone {
   if (v === "열세") return "crit";
   if (v === "동등") return "neutral";
   return "warn";
+}
+
+const RADAR_COLORS = ["#0f766e", "#c2410c", "#7c3aed", "#0369a1", "#a16207", "#be185d"];
+
+function radarPoints(axes: { key: BmAxis }[], radar: BmRadar, cx: number, cy: number, r: number) {
+  const n = axes.length;
+  return axes
+    .map((ax, i) => {
+      const v = radar[ax.key];
+      const rr = r * (v == null ? 0 : v);
+      const angle = -Math.PI / 2 + (i * 2 * Math.PI) / n;
+      return `${(cx + rr * Math.cos(angle)).toFixed(1)},${(cy + rr * Math.sin(angle)).toFixed(1)}`;
+    })
+    .join(" ");
+}
+
+// 스파이더맵(레이더 차트): 대상 제품(굵은 선)과 같은 가격대 경쟁 제품 최대 5개를
+// 5개 축(가격·POD·평가점수·에너지·AI기능) 0~1 정규화 값으로 겹쳐 그립니다.
+function BmRadarChart({ bm }: { bm: Benchmark }) {
+  const axes = bm.radar_axes;
+  const n = axes.length;
+  const cx = 120, cy = 120, r = 95;
+  const peers = (bm.rows || []).slice(0, 5);
+  return (
+    <div style={{ flex: "0 0 260px" }}>
+      <svg viewBox="0 0 240 240" style={{ width: "100%", height: "auto" }}>
+        {[0.25, 0.5, 0.75, 1].map((f) => (
+          <polygon
+            key={f}
+            points={axes
+              .map((_, i) => {
+                const angle = -Math.PI / 2 + (i * 2 * Math.PI) / n;
+                return `${(cx + r * f * Math.cos(angle)).toFixed(1)},${(cy + r * f * Math.sin(angle)).toFixed(1)}`;
+              })
+              .join(" ")}
+            fill="none"
+            stroke="var(--ui-border, #e5e7eb)"
+            strokeWidth={1}
+          />
+        ))}
+        {axes.map((_, i) => {
+          const angle = -Math.PI / 2 + (i * 2 * Math.PI) / n;
+          return (
+            <line
+              key={i}
+              x1={cx}
+              y1={cy}
+              x2={(cx + r * Math.cos(angle)).toFixed(1)}
+              y2={(cy + r * Math.sin(angle)).toFixed(1)}
+              stroke="var(--ui-border, #d8dbe0)"
+              strokeWidth={1}
+            />
+          );
+        })}
+        {peers.map((row, i) => {
+          const color = RADAR_COLORS[(i + 1) % RADAR_COLORS.length];
+          return (
+            <polygon
+              key={row.url}
+              points={radarPoints(axes, row.radar, cx, cy, r)}
+              fill={`${color}22`}
+              stroke={color}
+              strokeWidth={1.5}
+            />
+          );
+        })}
+        <polygon
+          points={radarPoints(axes, bm.target.radar, cx, cy, r)}
+          fill={`${RADAR_COLORS[0]}33`}
+          stroke={RADAR_COLORS[0]}
+          strokeWidth={2.5}
+        />
+        {axes.map((ax, i) => {
+          const angle = -Math.PI / 2 + (i * 2 * Math.PI) / n;
+          const x = cx + (r + 16) * Math.cos(angle);
+          const y = cy + (r + 16) * Math.sin(angle);
+          const anchor = Math.cos(angle) > 0.3 ? "start" : Math.cos(angle) < -0.3 ? "end" : "middle";
+          return (
+            <text
+              key={ax.key}
+              x={x.toFixed(1)}
+              y={y.toFixed(1)}
+              fontSize={9}
+              fill="var(--muted-ink, #6b7280)"
+              textAnchor={anchor}
+              dominantBaseline="middle"
+            >
+              {ax.label}
+            </text>
+          );
+        })}
+      </svg>
+      <div style={{ fontSize: 12, marginTop: 4 }}>
+        <span style={{ marginRight: 10, display: "inline-flex", alignItems: "center", gap: 4 }}>
+          <span
+            style={{ width: 9, height: 9, borderRadius: "50%", display: "inline-block", background: RADAR_COLORS[0] }}
+          />
+          {bm.target.maker || "대상"}
+        </span>
+        {peers.map((row, i) => (
+          <span key={row.url} style={{ marginRight: 10, display: "inline-flex", alignItems: "center", gap: 4 }}>
+            <span
+              style={{
+                width: 9,
+                height: 9,
+                borderRadius: "50%",
+                display: "inline-block",
+                background: RADAR_COLORS[(i + 1) % RADAR_COLORS.length],
+              }}
+            />
+            {row.maker}
+          </span>
+        ))}
+      </div>
+      <Muted style={{ fontSize: 11 }}>값이 없는 축은 중심(0)으로 그립니다 · 이 가격대 안에서의 상대 위치입니다</Muted>
+    </div>
+  );
+}
+
+function MarketShareView({ bm }: { bm: Benchmark }) {
+  const rows = bm.market_share || [];
+  if (!rows.length) return null;
+  const max = Math.max(...rows.map((r) => r.share_pct), 1);
+  return (
+    <div style={{ flex: "1 1 220px", minWidth: 220 }}>
+      <b style={{ fontSize: 13 }}>이 가격대의 브랜드 비중</b>
+      <Muted style={{ display: "block", fontSize: 11, marginBottom: 8 }}>{bm.market_share_note}</Muted>
+      {rows.map((r) => (
+        <div key={r.maker} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, fontSize: 12.5 }}>
+          <span
+            style={{
+              width: 90,
+              flexShrink: 0,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+              fontWeight: r.is_target ? 700 : 400,
+            }}
+            title={r.maker}
+          >
+            {r.maker}
+          </span>
+          <span style={{ flex: 1, background: "var(--chip, #eef2f1)", borderRadius: 5, height: 10, overflow: "hidden" }}>
+            <span
+              style={{
+                display: "block",
+                height: "100%",
+                borderRadius: 5,
+                width: `${(r.share_pct / max) * 100}%`,
+                background: r.is_target ? "var(--accent, #0f766e)" : "var(--muted-ink, #9ca3af)",
+              }}
+            />
+          </span>
+          <span style={{ width: 60, textAlign: "right", flexShrink: 0, color: "var(--muted-ink, #6b7280)" }}>
+            {r.share_pct}% ({r.count})
+          </span>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 type View = "compare" | "sources" | "watches";
@@ -775,6 +936,11 @@ export default function Appliances() {
               </div>
             )}
             {!bm.strengths.length && !bm.weaknesses.length && <Muted>뚜렷한 강점·약점 없이 팽팽합니다.</Muted>}
+
+            <Row style={{ marginTop: "var(--space-3)", alignItems: "flex-start", flexWrap: "wrap", gap: 20 }}>
+              <BmRadarChart bm={bm} />
+              <MarketShareView bm={bm} />
+            </Row>
 
             {bm.peer_count === 0 ? (
               <Muted>같은 대륙·품목·가격대에 견줄 다른 제품이 아직 없습니다.</Muted>

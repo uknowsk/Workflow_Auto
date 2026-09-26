@@ -152,6 +152,7 @@ export type Product = {
 export type BmVerdict = "우위" | "동등" | "열세" | "비교불가";
 export type BmAxis = "price_usd" | "pod_count" | "rating" | "energy" | "ai_count";
 export type BmAxisResult = { label: string; target: number | null; peer: number | null; verdict: BmVerdict };
+export type BmRadar = Record<BmAxis, number | null>;
 export type BmPeerRow = {
   maker: string;
   name: string;
@@ -159,7 +160,9 @@ export type BmPeerRow = {
   price_usd: number | null;
   url: string;
   axes: Record<BmAxis, BmAxisResult>;
+  radar: BmRadar;
 };
+export type MarketShareRow = { maker: string; count: number; share_pct: number; is_target: boolean };
 export type Benchmark = {
   ok: boolean;
   error?: string;
@@ -173,12 +176,16 @@ export type Benchmark = {
     rating_value: number | null;
     review_source: string | null;
     review_score: number | null;
+    radar: BmRadar;
   };
   peer_count: number;
   rows: BmPeerRow[];
   axis_tally: Record<BmAxis, Record<string, number>>;
   strengths: string[];
   weaknesses: string[];
+  radar_axes: { key: BmAxis; label: string }[];
+  market_share: MarketShareRow[];
+  market_share_note: string;
 };
 
 export type PriceBand = {

@@ -672,3 +672,55 @@ def test_강점과_약점이_섞여도_따로_집계된다(fake_web):
     assert "POD(차별점) 개수" in result["strengths"]
 
 
+# ── 스파이더맵(레이더 차트) 정규화 ──────────────────────────────────────
+def test_레이더는_가격대_안에서_0과_1사이로_맞춘다(fake_web):
+    _seed_bm_product("https://a.example/target", price_usd=800.0, pods=["a", "b"])  # 가장 싸고 POD 가장 많음
+    _seed_bm_product("https://a.example/mid", price_usd=1000.0, pods=["a"])
+    _seed_bm_product("https://a.example/priciest", price_usd=1200.0, pods=[])  # 가장 비싸고 POD 없음
+
+    result = service.benchmark("https://a.example/target")
+    # 가격은 "낮을수록 유리"라 가장 싼 대상이 1(바깥쪽), 가장 비싼 경쟁자가 0(안쪽)
+    assert result["target"]["radar"]["price_usd"] == 1.0
+    priciest = next(r for r in result["rows"] if r["url"] == "https://a.example/priciest")
+    assert priciest["radar"]["price_usd"] == 0.0
+    # POD는 "많을수록 유리"라 대상이 가장 많으니 1
+    assert result["target"]["radar"]["pod_count"] == 1.0
+    assert priciest["radar"]["pod_count"] == 0.0
+
+
+def test_레이더_값이_모두_같으면_가운데_0点5로_본다(fake_web):
+    _seed_bm_product("https://a.example/target", price_usd=1000.0)
+    _seed_bm_product("https://a.example/peer", price_usd=1000.0)
+
+    result = service.benchmark("https://a.example/target")
+    assert result["target"]["radar"]["price_usd"] == 0.5
+    assert result["rows"][0]["radar"]["price_usd"] == 0.5
+
+
+def test_레이더는_값이_없는_축은_None으로_비워둔다(fake_web):
+    _seed_bm_product("https://a.example/target")  # rating 없음
+    _seed_bm_product("https://a.example/peer")
+
+    result = service.benchmark("https://a.example/target")
+    assert result["target"]["radar"]["rating"] is None
+    assert result["rows"][0]["radar"]["rating"] is None
+
+
+# ── 시장점유율(제품 수 기준 비중) ────────────────────────────────────────
+def test_점유율은_판매량이_아니라_이_가격대_제품_수_기준이다(fake_web):
+    _seed_bm_product("https://a.example/target", maker="GE")
+    _seed_bm_product("https://a.example/ge2", maker="GE")
+    _seed_bm_product("https://a.example/wp1", maker="Whirlpool")
+    _seed_bm_product("https://a.example/other-band", maker="Samsung", band="1000-1500")  # 다른 가격대는 빼야 함
+
+    result = service.benchmark("https://a.example/target")
+    shares = {row["maker"]: row for row in result["market_share"]}
+    assert set(shares) == {"GE", "Whirlpool"}
+    assert shares["GE"]["count"] == 2
+    assert shares["GE"]["share_pct"] == pytest.approx(66.7, abs=0.1)
+    assert shares["Whirlpool"]["count"] == 1
+    assert shares["GE"]["is_target"] is True
+    assert shares["Whirlpool"]["is_target"] is False
+    assert result["market_share_note"]  # 판매량이 아니라는 설명이 항상 같이 온다
+
+
