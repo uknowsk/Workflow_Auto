@@ -125,7 +125,7 @@ def fake_web(monkeypatch):
     monkeypatch.setattr(discover, "SEARCH_PROVIDER", "")
     web.reset()
     # 테스트마다 저장소를 비웁니다
-    for kind in ("product", "source", "scan", "watch", "region_makers"):
+    for kind in ("product", "source", "scan", "watch", "region_makers", "custom_brand"):
         for record in service.store.list(kind):
             service.store.delete(record["id"])
     service.set_region_makers(
@@ -154,6 +154,66 @@ def test_글로벌_탑_20이_기본값이고_대륙_순위로_거르지_않는�
 def test_모르는_홈페이지는_빈_문자열이지_에러가_아니다():
     assert catalog.brand_site("Viking", "asia") == ""
     assert catalog.brand_site("없는브랜드", "north_america") == ""
+
+
+# ── 브랜드 이름+주소만으로 추가하기 ────────────────────────────────────────
+# 주의: fake_web 픽스처가 north_america 는 GE·Whirlpool 2개짜리 목록으로 이미
+# 바꿔 둡니다(set_region_makers). 그래서 "글로벌 탑 20 기본값" 개수를 보려면
+# 손 안 댄 다른 대륙(europe 등)으로 확인합니다.
+def test_이름과_주소만으로_새_브랜드를_추가한다(fake_web):
+    service.add_brand("Sharp", "https://www.sharpusa.com")
+    # region 을 안 정했으니 대륙과 상관없이(대륙별 회사 목록을 손 안 댄 곳도) 보여야 합니다.
+    europe_makers = service.region_makers("europe")
+    assert {"name": "Sharp", "site": "https://www.sharpusa.com"} in europe_makers
+    assert len(europe_makers) == 21  # 글로벌 탑 20 + 새로 더한 1개
+    assert any(m["name"] == "Sharp" for m in service.region_makers("north_america"))
+
+
+def test_대륙을_정해서_추가하면_그_대륙에서만_보인다(fake_web):
+    service.add_brand("Local Brand", "https://www.example.com", region="asia")
+    assert any(m["name"] == "Local Brand" for m in service.region_makers("asia"))
+    assert not any(m["name"] == "Local Brand" for m in service.region_makers("north_america"))
+
+
+def test_같은_이름으로_다시_추가하면_주소만_바뀐다(fake_web):
+    service.add_brand("Sharp", "https://old.example.com")
+    service.add_brand("Sharp", "https://new.example.com")
+    matches = [m for m in service.custom_brands() if m["name"] == "Sharp"]
+    assert len(matches) == 1
+    assert matches[0]["site"] == "https://new.example.com"
+
+
+def test_이미_있는_글로벌_탑20_브랜드_주소도_고칠_수_있다(fake_web):
+    service.add_brand("Viking", "https://www.new-viking-site.com")
+    makers = service.region_makers("europe")  # 손 안 댄 대륙 = 글로벌 탑 20 기본값
+    viking = next(m for m in makers if m["name"] == "Viking")
+    assert viking["site"] == "https://www.new-viking-site.com"
+    assert len(makers) == 20  # 새 브랜드가 아니라 기존 것을 고친 거라 개수는 그대로
+
+
+def test_이름이나_주소가_없거나_http로_안_시작하면_거절한다(fake_web):
+    with pytest.raises(ValueError):
+        service.add_brand("", "https://example.com")
+    with pytest.raises(ValueError):
+        service.add_brand("Sharp", "www.example.com")  # http(s):// 없음
+    with pytest.raises(ValueError):
+        service.add_brand("Sharp", "https://example.com", region="화성")
+
+
+def test_화면_API로_브랜드를_추가하고_카탈로그에서_확인한다(fake_web):
+    from appliance_watch import server
+
+    client = TestClient(server.build_app())
+    added = client.post("/api/brands", json={"name": "Sharp", "url": "https://www.sharpusa.com"})
+    assert added.status_code == 200 and added.json()["ok"]
+
+    catalog_view = client.get("/api/catalog").json()
+    assert any(b["name"] == "Sharp" and b["tier"] == "직접 추가" for b in catalog_view["global_brands"])
+    na = next(r for r in catalog_view["regions"] if r["key"] == "north_america")
+    assert any(m["name"] == "Sharp" for m in na["makers"])
+
+    bad = client.post("/api/brands", json={"name": "Sharp", "url": "not-a-url"})
+    assert bad.status_code == 400 and bad.json()["ok"] is False
 
 
 # ── 작은 부품 ──────────────────────────────────────────────────────────

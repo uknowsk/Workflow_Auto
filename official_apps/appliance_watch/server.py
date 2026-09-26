@@ -142,6 +142,25 @@ def set_region_makers(region: str, makers: str) -> dict:
 
 
 @mcp.tool()
+def add_brand(name: str, url: str, region: str = "") -> dict:
+    """새 가전 브랜드를 조사 대상에 추가합니다. 이름과 공식 홈페이지 주소만 있으면 됩니다.
+
+    글로벌 탑 20 에 없는 브랜드도 이걸로 바로 추가해서 조사할 수 있습니다.
+    이미 있는 이름이면(글로벌 탑 20 포함) 그 주소를 바꾸는 걸로 봅니다.
+
+    Args:
+        name: 브랜드 이름. 예) "Sharp"
+        url: 공식 홈페이지 주소. http:// 또는 https:// 로 시작해야 합니다.
+        region: 이 대륙에서만 쓸 때 대륙 키(north_america/europe/asia/south_america/oceania).
+            비우면 모든 대륙에서 이 주소로 씁니다.
+    """
+    try:
+        return {"ok": True, "brand": service.add_brand(name, url, region)}
+    except ValueError as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+@mcp.tool()
 def add_watch(region: str, category: str, makers: str = "", every_hours: int = 168) -> dict:
     """주기적으로 신제품을 확인할 대상을 등록합니다. 기본은 일주일(168시간)마다."""
     names = [m.strip() for m in makers.split(",") if m.strip()]
@@ -183,6 +202,24 @@ async def api_set_makers(request: Request):
     except ValueError as exc:
         return JSONResponse({"ok": False, "error": str(exc)}, status_code=400)
     return JSONResponse({"ok": True, "makers": makers})
+
+
+@mcp.custom_route("/api/brands", methods=["GET", "POST"])
+async def api_brands(request: Request):
+    if request.method == "GET":
+        return JSONResponse({"brands": service.custom_brands()})
+    body = await _body(request)
+    try:
+        brand = service.add_brand(body.get("name", ""), body.get("url") or body.get("site", ""), body.get("region", ""))
+    except ValueError as exc:
+        return JSONResponse({"ok": False, "error": str(exc)}, status_code=400)
+    return JSONResponse({"ok": True, "brand": brand})
+
+
+@mcp.custom_route("/api/brands/{brand_id}", methods=["DELETE"])
+async def api_delete_brand(request: Request):
+    ok = service.remove_brand(request.path_params["brand_id"])
+    return JSONResponse({"ok": ok})
 
 
 @mcp.custom_route("/api/scan", methods=["POST"])

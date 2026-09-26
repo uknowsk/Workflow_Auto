@@ -156,6 +156,10 @@ export default function Appliances() {
   const [error, setError] = useState("");
   const [sourceMaker, setSourceMaker] = useState("");
   const [sourceUrl, setSourceUrl] = useState("");
+  const [brandName, setBrandName] = useState("");
+  const [brandUrl, setBrandUrl] = useState("");
+  const [brandAllRegions, setBrandAllRegions] = useState(true);
+  const [brandBusy, setBrandBusy] = useState(false);
 
   const regionInfo = catalog?.regions.find((r) => r.key === region);
   const regionMakers = regionInfo?.makers ?? [];
@@ -163,7 +167,7 @@ export default function Appliances() {
   // 이름 → tier("글로벌 톱티어" 등) 조회. 대륙은 홈페이지만 고를 뿐, 이 순위는 대륙과 무관합니다.
   const tierOf = (name: string) => catalog?.global_brands.find((b) => b.name === name)?.tier ?? "";
 
-  useEffect(() => {
+  const loadCatalog = () =>
     applianceApi
       .catalog()
       .then(setCatalog)
@@ -172,6 +176,10 @@ export default function Appliances() {
           `가전 신제품 조사 앱(${APPLIANCE_API})에 연결하지 못했습니다. 앱이 켜져 있는지 확인하세요.`
         )
       );
+
+  useEffect(() => {
+    loadCatalog();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // 대륙을 바꾸면 그 대륙에서 살펴볼 후보(글로벌 탑 20) 중 "글로벌 톱티어"만
@@ -251,6 +259,21 @@ export default function Appliances() {
     }
   };
 
+  const addBrand = async () => {
+    setError(""); setMessage(""); setBrandBusy(true);
+    try {
+      const result = await applianceApi.addBrand(brandName.trim(), brandUrl.trim(), brandAllRegions ? "" : region);
+      if (!result.ok) { setError(result.error || "브랜드를 추가하지 못했습니다."); return; }
+      setMessage(`"${brandName.trim()}" 을(를) 조사 대상에 추가했습니다.`);
+      setBrandName(""); setBrandUrl("");
+      await loadCatalog();
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBrandBusy(false);
+    }
+  };
+
   const addSource = async () => {
     if (!sourceUrl.startsWith("http")) return;
     try {
@@ -310,7 +333,7 @@ export default function Appliances() {
           label={`${regionInfo?.label ?? ""} 조사 대상 (글로벌 탑 20)`}
           hint="누르면 빼고 넣을 수 있어요 · 대륙은 홈페이지·통화만 바꿀 뿐 순위를 거르지 않아요"
         >
-          {["글로벌 톱티어", "프리미엄", "지역 강세"].map((tier) => {
+          {["글로벌 톱티어", "프리미엄", "지역 강세", "직접 추가"].map((tier) => {
             const group = regionMakers.filter((m) => tierOf(m.name) === tier);
             if (!group.length) return null;
             return (
@@ -326,6 +349,36 @@ export default function Appliances() {
               </div>
             );
           })}
+        </Field>
+
+        <Field label="새 브랜드 추가" hint="이름과 공식 홈페이지 주소만 넣으면 바로 조사 대상에 더해져요">
+          <Row>
+            <Input
+              placeholder="브랜드명 (예: Sharp)"
+              value={brandName}
+              onChange={(e) => setBrandName(e.target.value)}
+              style={{ width: 160 }}
+            />
+            <Input
+              placeholder="https://공식홈페이지주소"
+              value={brandUrl}
+              onChange={(e) => setBrandUrl(e.target.value)}
+              style={{ width: 280 }}
+            />
+            <Checkbox
+              label="모든 대륙에서 쓰기"
+              checked={brandAllRegions}
+              onChange={(e) => setBrandAllRegions(e.target.checked)}
+            />
+            <Button
+              small
+              variant="soft"
+              onClick={addBrand}
+              disabled={brandBusy || !brandName.trim() || !brandUrl.trim().startsWith("http")}
+            >
+              추가
+            </Button>
+          </Row>
         </Field>
 
         <Row between>

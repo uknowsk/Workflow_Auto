@@ -25,12 +25,53 @@ store = Store("appliance_watch")
 _scan_lock = threading.Lock()
 
 
-# ── 이 대륙에서 살펴볼 회사(기본값: 글로벌 탑 20 전부) ────────────────────
+# ── 사람이 이름+주소만으로 더한 브랜드 ────────────────────────────────────
+def custom_brands() -> list[dict]:
+    """브랜드 이름과 공식 홈페이지 주소만으로 추가한 브랜드들.
+
+    region 이 비어 있으면 모든 대륙에서 이 주소를 씁니다.
+    """
+    return store.list("custom_brand")
+
+
+def add_brand(name: str, site: str, region: str = "") -> dict:
+    """브랜드 하나를 조사 대상에 추가합니다. 이름과 공식 홈페이지 주소만 있으면 됩니다.
+
+    이미 있는 이름(글로벌 탑 20 포함)이면 그 주소를 바꾸는 걸로 봅니다 —
+    코드(catalog.py)를 안 고치고도 잘못된 기본 주소를 바로잡을 수 있습니다.
+    """
+    name = str(name).strip()
+    site = str(site).strip().rstrip("/")
+    if not name:
+        raise ValueError("브랜드 이름을 입력하세요.")
+    if not site.startswith(("http://", "https://")):
+        raise ValueError("공식 홈페이지 주소는 http:// 또는 https:// 로 시작해야 합니다.")
+    if region and region not in catalog.REGIONS:
+        raise ValueError(f"모르는 대륙입니다: {region}")
+    # 같은 이름 + 같은 대륙(또는 둘 다 "모든 대륙")이면 주소만 갱신합니다.
+    for old in store.list("custom_brand", name=name):
+        if old.get("region", "") == region:
+            store.delete(old["id"])
+    return store.put("custom_brand", {"name": name, "site": site, "region": region})
+
+
+def remove_brand(brand_id: str) -> bool:
+    return store.delete(brand_id)
+
+
+# ── 이 대륙에서 살펴볼 회사(기본값: 글로벌 탑 20 + 사람이 더한 브랜드) ─────
 def region_makers(region: str) -> list[dict]:
     saved = store.list("region_makers", region=region)
-    if saved:
-        return saved[-1]["makers"]
-    return catalog.default_region_makers(region)
+    base = saved[-1]["makers"] if saved else catalog.default_region_makers(region)
+    by_name: dict[str, dict] = {m["name"]: dict(m) for m in base}
+    order = list(by_name.keys())
+    for brand in custom_brands():
+        if brand.get("region") and brand["region"] != region:
+            continue  # 특정 대륙 전용으로 추가한 건데 지금 보는 대륙이 아닙니다.
+        if brand["name"] not in by_name:
+            order.append(brand["name"])
+        by_name[brand["name"]] = {"name": brand["name"], "site": brand["site"]}
+    return [by_name[name] for name in order]
 
 
 def set_region_makers(region: str, makers: list[dict]) -> list[dict]:
@@ -48,8 +89,11 @@ def set_region_makers(region: str, makers: list[dict]) -> list[dict]:
 
 
 def catalog_view() -> dict:
+    known_names = {b["name"] for b in catalog.GLOBAL_BRANDS}
+    added_names = sorted({b["name"] for b in custom_brands() if b["name"] not in known_names})
+    brands = catalog.global_brands() + [{"name": n, "tier": "직접 추가"} for n in added_names]
     return {
-        "global_brands": catalog.global_brands(),  # 영향력 기준 탑 20 (참고용, tier 포함)
+        "global_brands": brands,  # 영향력 기준 탑 20 + 사람이 이름/주소만으로 더한 브랜드
         "regions": [
             {"key": key, **info, "makers": region_makers(key)} for key, info in catalog.REGIONS.items()
         ],

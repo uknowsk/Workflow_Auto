@@ -204,6 +204,12 @@ export const applianceApi = {
       method: "POST",
       body: JSON.stringify({ region, makers }),
     }),
+  addBrand: (name: string, url: string, region: string) =>
+    call<{ ok: boolean; error?: string; brand?: { name: string; site: string; region: string } }>(
+      APPLIANCE_API,
+      "/api/brands",
+      { method: "POST", body: JSON.stringify({ name, url, region }) }
+    ),
   scan: (region: string, category: string, makers: string[], maxPerMaker: number) =>
     call<ScanResult>(APPLIANCE_API, "/api/scan", {
       method: "POST",
