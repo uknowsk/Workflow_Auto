@@ -1,11 +1,14 @@
-"""POD(Point of Difference, 차별점) 뽑기.
+"""POD(Point of Difference, 차별점)·AI 기능·에너지 효율을 정리합니다.
 
-"이 제품만의 내세울 점"은 혼자 봐서는 모릅니다. 같은 품목·같은 가격대의
-경쟁 제품과 나란히 놓고 "남들은 없는데 이것만 있는 것"을 골라야 합니다.
+규칙 기반 스크래핑(discover.py, extract.py)이 페이지에서 "있는 그대로"
+가져온 이름·스펙·특징을 바탕으로, 여기서는 "그래서 뭐가 다른가"를 정리합니다.
 
-- 사내 LLM(Gauss 등)이 연결돼 있으면: 제품 특징 + 경쟁 제품 요약을 주고 POD 3개를 받습니다.
-- 연결이 안 돼 있거나 실패하면: 특징 문장 중에서 경쟁 제품들에는 잘 안 나오는
-  낱말이 많은 문장을 고릅니다(드물수록 차별점일 가능성이 높다는 단순한 규칙).
+- 사내 LLM(Gauss 등)이 연결돼 있으면: 제품 특징 + 경쟁 제품 요약을 한 번에 주고
+  POD·AI 기능·에너지 효율을 같이 정형화해서 받습니다(llm_enrich).
+- 연결이 안 돼 있거나 실패하면 규칙으로 대신합니다(heuristic_pods,
+  ai_features_from_rules) — LLM 이 없어도 이 앱은 그대로 돌아갑니다.
+
+enrich_product() 가 위 둘을 무엇을 쓸지 정하는 창구입니다.
 """
 from __future__ import annotations
 
@@ -27,6 +30,14 @@ _STOP = {
 # "OO는 최고의 가전을 만드는 회사입니다" 같은 사이트 공통 소개 문구는 이 제품만의
 # 특징이 아닙니다. 숫자나 단위(용량, 와트, 인치 ...)가 있어야 제품 얘기로 봅니다.
 _PRODUCT_SPECIFIC = re.compile(r"\d|cu\.?\s*ft|watt|btu|liter|inch|volt|amp|리터|인치|와트", re.I)
+# AI·자동화·연결 기능. "스마트"/"자동" 처럼 너무 흔한 낱말 하나만으로는 오탐이
+# 많아서, AI·음성·앱연동·사물인터넷처럼 구체적인 표현이 있어야 잡습니다.
+_AI_HINT = re.compile(
+    r"artificial intelligence|\bai\b|smartthings|wi-?fi|voice control|alexa|"
+    r"google assistant|scan-?to-?cook|auto\s?sense|adaptive\s*(cook|sensing)|"
+    r"인공지능|스마트\s?(홈|싱스)|음성\s?(인식|제어)|사물인터넷|\biot\b",
+    re.I,
+)
 
 
 def _words(text: str) -> set[str]:
@@ -64,6 +75,15 @@ def heuristic_pods(product: dict, peers: list[dict], limit: int = 3) -> list[str
     return (distinct or ranked[:1])[:limit]
 
 
+def ai_features_from_rules(product: dict, limit: int = 5) -> list[str]:
+    """AI·자동화·연결 기능처럼 보이는 문장을 특징·설명에서 고릅니다(규칙 기반).
+
+    LLM 이 없어도 "이 제품에 그런 기능이 있는지"는 알 수 있게 하는 최소한의
+    안전망입니다. 지어내지 않고 페이지 문장을 그대로 가져옵니다.
+    """
+    return [line for line in _lines(product) if _AI_HINT.search(line)][:limit]
+
+
 def _peer_digest(peers: list[dict]) -> str:
     rows = []
     for peer in peers[:8]:
@@ -72,8 +92,14 @@ def _peer_digest(peers: list[dict]) -> str:
     return "\n".join(rows) or "(비교할 경쟁 제품 없음)"
 
 
-def llm_pods(product: dict, peers: list[dict], limit: int = 3) -> list[str] | None:
-    """LLM 으로 POD 를 뽑습니다. 연결이 없거나 실패하면 None."""
+def llm_enrich(product: dict, peers: list[dict], limit: int = 3) -> dict | None:
+    """LLM 으로 POD·AI 기능·에너지 효율을 한 번에 정형화해서 받습니다.
+
+    한 제품당 LLM 호출을 하나로 묶어 두는 이유는, POD 뽑으려고 한 번, AI 기능
+    뽑으려고 또 한 번 부르면 그만큼 느려지고 사내 LLM 부하도 커지기 때문입니다.
+    연결이 안 돼 있거나 실패하면(형식이 깨진 응답 포함) None 을 돌려주고,
+    호출한 쪽(enrich_product)이 규칙 기반으로 넘어갑니다.
+    """
     if not (POD_USE_LLM and LLM_BASE_URL):
         return None
     try:
@@ -84,11 +110,16 @@ def llm_pods(product: dict, peers: list[dict], limit: int = 3) -> list[str] | No
         prompt = (
             f"제품: {product.get('maker', '')} {product.get('name', '')} ({product.get('model', '')})\n"
             f"가격: {product.get('price')} {product.get('currency')}\n"
-            f"특징: {' / '.join(_lines(product)[:10])}\n스펙: {specs}\n\n"
+            f"특징: {' / '.join(_lines(product)[:10])}\n스펙: {specs}\n"
+            f"페이지에서 찾은 에너지 효율 단서: {product.get('energy_rating') or '(없음)'}\n\n"
             f"같은 품목의 경쟁 제품:\n{_peer_digest(peers)}\n\n"
-            f"경쟁 제품과 비교했을 때 이 제품만의 차별점(POD)을 한국어로 {limit}개 뽑아라. "
-            "페이지에 근거가 있는 것만 쓰고, 숫자는 그대로 살려라. "
-            'JSON 으로만 답해라. 형식: {"pods": ["...", "..."]}'
+            "페이지에 근거가 있는 것만 뽑아라(지어내지 마라). 숫자는 그대로 살려라.\n"
+            f"1) pods: 경쟁 제품과 비교했을 때 이 제품만의 차별점을 한국어로 {limit}개\n"
+            "2) ai_features: AI·자동화·음성제어·앱연동처럼 지능형/연결 기능이면 "
+            "원문 표현 그대로 최대 5개(그런 기능이 없으면 빈 배열)\n"
+            "3) energy_rating: 에너지 효율·소비전력 관련 문구가 있으면 다듬어서, "
+            "없으면 빈 문자열\n"
+            'JSON 으로만 답해라. 형식: {"pods": [...], "ai_features": [...], "energy_rating": "..."}'
         )
         response = client.chat.completions.create(
             model=LLM_MODEL,
@@ -100,15 +131,38 @@ def llm_pods(product: dict, peers: list[dict], limit: int = 3) -> list[str] | No
         )
         text = response.choices[0].message.content or ""
         match = re.search(r"\{.*\}", text, re.S)
-        pods = json.loads(match.group(0)).get("pods", []) if match else []
-        return [str(p).strip() for p in pods if str(p).strip()][:limit] or None
+        if not match:
+            return None
+        data = json.loads(match.group(0))
+        pods = [str(p).strip() for p in data.get("pods", []) if str(p).strip()][:limit]
+        ai_features = [str(a).strip() for a in data.get("ai_features", []) if str(a).strip()][:5]
+        energy_rating = str(data.get("energy_rating") or "").strip()
+        if not pods and not ai_features and not energy_rating:
+            return None  # 셋 다 비면 응답이 쓸모없다고 보고 규칙 기반으로 넘어갑니다
+        return {"pods": pods, "ai_features": ai_features, "energy_rating": energy_rating}
     except Exception:
         return None
 
 
-def extract_pods(product: dict, peers: list[dict], limit: int = 3) -> tuple[list[str], str]:
-    """(POD 목록, 어떻게 뽑았는지) 를 돌려줍니다."""
-    pods = llm_pods(product, peers, limit)
-    if pods:
-        return pods, "llm"
-    return heuristic_pods(product, peers, limit), "rule"
+def enrich_product(product: dict, peers: list[dict], limit: int = 3) -> dict:
+    """POD·AI 기능·에너지 효율을 정리해 돌려줍니다.
+
+    돌려주는 값: {"pods", "pod_method", "ai_features", "ai_method", "energy_rating"}
+    LLM 이 있으면 셋을 한 번에 정형화하고, 없거나 실패하면 항목별로 규칙 기반을
+    씁니다 — LLM 이 일부만(예: POD 만) 채워 줘도 나머지는 규칙으로 채웁니다.
+    energy_rating 은 페이지에서 이미 규칙으로 찾은 값이 있으면 그걸 그대로 두고,
+    없을 때만 LLM 이 준 값으로 채웁니다(페이지 사실을 LLM 추측으로 덮지 않기 위해).
+    """
+    llm = llm_enrich(product, peers, limit) or {}
+    pods = llm.get("pods") or heuristic_pods(product, peers, limit)
+    pod_method = "llm" if llm.get("pods") else "rule"
+    ai_features = llm.get("ai_features") or ai_features_from_rules(product)
+    ai_method = "llm" if llm.get("ai_features") else "rule"
+    energy_rating = product.get("energy_rating") or llm.get("energy_rating") or ""
+    return {
+        "pods": pods,
+        "pod_method": pod_method,
+        "ai_features": ai_features,
+        "ai_method": ai_method,
+        "energy_rating": energy_rating,
+    }

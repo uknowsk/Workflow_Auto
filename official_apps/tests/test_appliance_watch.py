@@ -279,6 +279,42 @@ def test_특징_목록이_없으면_사이트_소개문구를_POD로_쓰지_않�
     assert pod.heuristic_pods(specific, peers=[], limit=3)
 
 
+def test_AI_기능은_구체적인_표현이_있어야_잡는다():
+    product = {
+        "features": [
+            "Scan-to-Cook technology with Yummly app",
+            "Voice Control with a Compatible Voice-Enabled Device",
+            "Edge-to-edge cooktop",  # AI/연결 기능 아님 — 안 잡혀야 함
+        ]
+    }
+    assert pod.ai_features_from_rules(product) == [
+        "Scan-to-Cook technology with Yummly app",
+        "Voice Control with a Compatible Voice-Enabled Device",
+    ]
+    # "스마트"/"자동" 처럼 흔한 낱말 하나만으로는 안 잡습니다(오탐 방지).
+    assert pod.ai_features_from_rules({"features": ["Smart design", "Automatic shut-off"]}) == []
+
+
+def test_LLM_없으면_규칙으로_POD_AI기능_에너지효율을_채운다(monkeypatch):
+    monkeypatch.setattr(pod, "LLM_BASE_URL", "")
+    product = {
+        "maker": "Whirlpool",
+        "name": "Test Range",
+        "band": "보급형",
+        "energy_rating": "Energy Star Certified",  # 페이지에서 규칙으로 이미 찾은 값
+        "features": [
+            "Frozen Bake technology skips preheating",
+            "Alexa built-in voice control",
+        ],
+    }
+    result = pod.enrich_product(product, peers=[])
+    assert result["pod_method"] == "rule"
+    assert result["ai_method"] == "rule"
+    assert result["ai_features"] == ["Alexa built-in voice control"]
+    # 페이지에서 이미 찾은 에너지 효율 값은 LLM 없이도 그대로 남습니다.
+    assert result["energy_rating"] == "Energy Star Certified"
+
+
 # ── 출처 찾기 ─────────────────────────────────────────────────────────
 def test_사이트맵에서_품목_제품만_최신순으로_찾는다(fake_web):
     disc = discover.discover("GE Appliances", "north_america", "cooking", GE)

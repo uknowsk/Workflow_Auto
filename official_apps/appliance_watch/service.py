@@ -220,7 +220,7 @@ def scan(region: str, category: str, makers: list[str] | None = None, max_per_ma
             found.extend(_scan_maker(maker, region, category, limit, log))
         set_region_makers(region, all_makers)  # 검색으로 알아낸 홈페이지 주소 반영
 
-        # POD 는 같은 품목의 다른 회사 제품들과 견줘서 뽑습니다.
+        # POD·AI 기능·에너지 효율은 같은 품목의 다른 회사 제품들과 견줘서 정리합니다.
         others = list_products(region, category)
         saved, new_count = [], 0
         for product in found:
@@ -230,7 +230,7 @@ def scan(region: str, category: str, makers: list[str] | None = None, max_per_ma
                 if p["url"] != product["url"] and p.get("maker") != product["maker"]
             ]
             same_band = [p for p in peers if p.get("band") == product["band"]]
-            product["pods"], product["pod_method"] = pod.extract_pods(product, same_band or peers)
+            product.update(pod.enrich_product(product, same_band or peers))
 
             had_baseline = any(p.get("maker") == product["maker"] for p in others)
             existing = store.list("product", url=product["url"])
