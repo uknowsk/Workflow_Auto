@@ -170,7 +170,160 @@ function BmRadarChart({ bm }: { bm: Benchmark }) {
   );
 }
 
-function MarketShareView({ bm }: { bm: Benchmark }) {
+const SHARE_PIE_COLORS = ["#0f766e", "#c2410c", "#7c3aed", "#0369a1", "#a16207", "#be185d", "#334155", "#65a30d"];
+
+type AxisChartType = "radar" | "bar" | "table";
+type ShareChartType = "bar" | "pie";
+
+function ChartToggle<T extends string>({
+  label,
+  options,
+  value,
+  onChange,
+}: {
+  label: string;
+  options: { key: T; label: string }[];
+  value: T;
+  onChange: (v: T) => void;
+}) {
+  return (
+    <Row style={{ marginTop: "var(--space-2)", marginBottom: "var(--space-1)", alignItems: "center" }}>
+      <Muted>{label}</Muted>
+      {options.map((o) => (
+        <Chip key={o.key} active={value === o.key} onClick={() => onChange(o.key)}>
+          {o.label}
+        </Chip>
+      ))}
+    </Row>
+  );
+}
+
+// 축 값을 막대그래프로: 대상(굵게)과 경쟁 제품 최대 8개를 축마다 정규화(0~1) 값으로 비교합니다.
+function AxisBarChart({ bm }: { bm: Benchmark }) {
+  const peers = (bm.rows || []).slice(0, 8);
+  return (
+    <div>
+      {bm.radar_axes.map((ax) => (
+        <div key={ax.key} style={{ marginBottom: "var(--space-3)" }}>
+          <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 4 }}>{ax.label}</div>
+          <AxisBarRow label={bm.target.maker || "대상"} value={bm.target.radar[ax.key]} color={RADAR_COLORS[0]} bold />
+          {peers.map((row, i) => (
+            <AxisBarRow
+              key={row.url}
+              label={row.maker}
+              value={row.radar[ax.key]}
+              color={RADAR_COLORS[(i + 1) % RADAR_COLORS.length]}
+            />
+          ))}
+        </div>
+      ))}
+      <Muted style={{ fontSize: 11 }}>값이 없는 축은 0으로 그립니다 · 이 가격대 안에서의 상대 위치입니다</Muted>
+    </div>
+  );
+}
+
+function AxisBarRow({ label, value, color, bold }: { label: string; value: number | null; color: string; bold?: boolean }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3, fontSize: 11.5 }}>
+      <span
+        style={{ width: 110, flexShrink: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: bold ? 700 : 400 }}
+        title={label}
+      >
+        {label}
+      </span>
+      <span style={{ flex: 1, background: "var(--chip, #eef2f1)", borderRadius: 4, height: 8, overflow: "hidden" }}>
+        <span style={{ display: "block", height: "100%", borderRadius: 4, width: `${(value ?? 0) * 100}%`, background: color }} />
+      </span>
+    </div>
+  );
+}
+
+function AxisTable({ bm }: { bm: Benchmark }) {
+  if (!bm.peer_count) return <Muted>같은 대륙·품목·가격대에 견줄 다른 제품이 아직 없습니다.</Muted>;
+  return (
+    <div style={{ overflowX: "auto" }}>
+      <Table>
+        <thead>
+          <tr>
+            <th>경쟁 제품</th>
+            {BM_AXES.map((a) => (
+              <th key={a}>{bm.rows[0]?.axes[a]?.label ?? a}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {bm.rows.map((row) => (
+            <tr key={row.url}>
+              <td>
+                <a href={row.url} target="_blank" rel="noreferrer">
+                  {row.maker} {row.name || row.model}
+                </a>
+              </td>
+              {BM_AXES.map((a) => (
+                <td key={a}>
+                  <Badge tone={verdictTone(row.axes[a].verdict)}>{row.axes[a].verdict}</Badge>
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </Table>
+    </div>
+  );
+}
+
+function MarketSharePie({ bm }: { bm: Benchmark }) {
+  const rows = bm.market_share || [];
+  if (!rows.length) return null;
+  let acc = 0;
+  const stops = rows
+    .map((r, i) => {
+      const from = acc;
+      acc += r.share_pct;
+      return `${SHARE_PIE_COLORS[i % SHARE_PIE_COLORS.length]} ${from}% ${acc}%`;
+    })
+    .join(", ");
+  return (
+    <div style={{ flex: "1 1 220px", minWidth: 220 }}>
+      <b style={{ fontSize: 13 }}>이 가격대의 브랜드 비중</b>
+      <Muted style={{ display: "block", fontSize: 11, marginBottom: 8 }}>{bm.market_share_note}</Muted>
+      <Row style={{ gap: 14, alignItems: "center" }}>
+        <div
+          style={{
+            width: 120,
+            height: 120,
+            borderRadius: "50%",
+            flexShrink: 0,
+            background: `conic-gradient(${stops})`,
+            mask: "radial-gradient(circle, transparent 38%, #000 39%)",
+            WebkitMask: "radial-gradient(circle, transparent 38%, #000 39%)",
+          }}
+        />
+        <div style={{ fontSize: 12 }}>
+          {rows.map((r, i) => (
+            <div key={r.maker} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+              <span
+                style={{
+                  width: 9,
+                  height: 9,
+                  borderRadius: "50%",
+                  display: "inline-block",
+                  flexShrink: 0,
+                  background: SHARE_PIE_COLORS[i % SHARE_PIE_COLORS.length],
+                }}
+              />
+              <span style={{ fontWeight: r.is_target ? 700 : 400 }}>
+                {r.maker} · {r.share_pct}% ({r.count})
+              </span>
+            </div>
+          ))}
+        </div>
+      </Row>
+    </div>
+  );
+}
+
+function MarketShareBar({ bm }: { bm: Benchmark }) {
   const rows = bm.market_share || [];
   if (!rows.length) return null;
   const max = Math.max(...rows.map((r) => r.share_pct), 1);
@@ -345,6 +498,8 @@ export default function Appliances() {
   const [rvSource, setRvSource] = useState("");
   const [rvScore, setRvScore] = useState("");
   const [rvScale, setRvScale] = useState("5");
+  const [axisChartType, setAxisChartType] = useState<AxisChartType>("radar");
+  const [shareChartType, setShareChartType] = useState<ShareChartType>("bar");
 
   const regionInfo = catalog?.regions.find((r) => r.key === region);
   const regionMakers = regionInfo?.makers ?? [];
@@ -937,43 +1092,34 @@ export default function Appliances() {
             )}
             {!bm.strengths.length && !bm.weaknesses.length && <Muted>뚜렷한 강점·약점 없이 팽팽합니다.</Muted>}
 
-            <Row style={{ marginTop: "var(--space-3)", alignItems: "flex-start", flexWrap: "wrap", gap: 20 }}>
-              <BmRadarChart bm={bm} />
-              <MarketShareView bm={bm} />
-            </Row>
-
-            {bm.peer_count === 0 ? (
-              <Muted>같은 대륙·품목·가격대에 견줄 다른 제품이 아직 없습니다.</Muted>
-            ) : (
-              <div style={{ overflowX: "auto", marginTop: "var(--space-3)" }}>
-                <Table>
-                  <thead>
-                    <tr>
-                      <th>경쟁 제품</th>
-                      {BM_AXES.map((a) => (
-                        <th key={a}>{bm.rows[0]?.axes[a]?.label ?? a}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {bm.rows.map((row) => (
-                      <tr key={row.url}>
-                        <td>
-                          <a href={row.url} target="_blank" rel="noreferrer">
-                            {row.maker} {row.name || row.model}
-                          </a>
-                        </td>
-                        {BM_AXES.map((a) => (
-                          <td key={a}>
-                            <Badge tone={verdictTone(row.axes[a].verdict)}>{row.axes[a].verdict}</Badge>
-                          </td>
-                        ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </Table>
-              </div>
+            <ChartToggle
+              label="축 비교 보기"
+              options={[
+                { key: "radar" as const, label: "스파이더" },
+                { key: "bar" as const, label: "막대" },
+                { key: "table" as const, label: "표" },
+              ]}
+              value={axisChartType}
+              onChange={setAxisChartType}
+            />
+            {axisChartType === "radar" && (
+              <Row style={{ alignItems: "flex-start", flexWrap: "wrap", gap: 20 }}>
+                <BmRadarChart bm={bm} />
+              </Row>
             )}
+            {axisChartType === "bar" && <AxisBarChart bm={bm} />}
+            {axisChartType === "table" && <AxisTable bm={bm} />}
+
+            <ChartToggle
+              label="이 가격대 브랜드 비중 보기"
+              options={[
+                { key: "bar" as const, label: "막대" },
+                { key: "pie" as const, label: "파이" },
+              ]}
+              value={shareChartType}
+              onChange={setShareChartType}
+            />
+            {shareChartType === "pie" ? <MarketSharePie bm={bm} /> : <MarketShareBar bm={bm} />}
 
             <div style={{ marginTop: "var(--space-3)" }}>
             <Field

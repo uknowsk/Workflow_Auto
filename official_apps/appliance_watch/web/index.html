@@ -94,10 +94,24 @@
   .share-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 12.5px; }
   .share-row .label { width: 90px; flex-shrink: 0; text-overflow: ellipsis; overflow: hidden; white-space: nowrap; }
   .share-row .bar-track { flex: 1; background: var(--chip); border-radius: 5px; height: 10px; overflow: hidden; }
-  .share-row .bar-fill { height: 100%; background: var(--muted); border-radius: 5px; }
+  .share-row .bar-fill { display: block; height: 100%; background: var(--muted); border-radius: 5px; }
   .share-row.is-target .bar-fill { background: var(--accent); }
   .share-row.is-target .label { font-weight: 700; }
   .share-row .pct { width: 54px; text-align: right; flex-shrink: 0; color: var(--muted); }
+  .chip.mini { padding: 3px 10px; font-size: 12px; }
+  .chart-toggle { margin: 10px 0 2px; align-items: center; }
+  .chart-toggle .muted { margin-right: 2px; }
+  .axis-bar-group { margin-bottom: 12px; }
+  .axis-bar-group .axis-label { font-size: 12px; font-weight: 700; margin-bottom: 4px; }
+  .axis-bar-row { display: flex; align-items: center; gap: 6px; margin-bottom: 3px; font-size: 11.5px; }
+  .axis-bar-row .name { width: 110px; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .axis-bar-row .track { flex: 1; background: var(--chip); border-radius: 4px; height: 8px; overflow: hidden; }
+  .axis-bar-row .fill { display: block; height: 100%; border-radius: 4px; }
+  .bm-pie { display: flex; gap: 14px; align-items: center; }
+  .bm-pie .donut { width: 120px; height: 120px; border-radius: 50%; flex-shrink: 0; }
+  .bm-pie-legend { font-size: 12px; }
+  .bm-pie-legend .row2 { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+  .bm-pie-legend .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
 </style>
 </head>
 <body>
@@ -365,79 +379,177 @@ function radarSvg(bm) {
   return `<svg viewBox="0 0 240 240">${rings}${spokes}${peerPolys}${targetPoly}${labels}</svg>${legend}`;
 }
 
-function marketShareView(bm) {
+function axisBarView(bm) {
+  const axes = bm.radar_axes;
+  const peers = (bm.rows || []).slice(0, 8);
+  return axes
+    .map((ax) => {
+      const targetRow = `
+        <div class="axis-bar-row">
+          <span class="name" title="${esc(bm.target.maker || "대상")}"><b>${esc(bm.target.maker || "대상")}</b></span>
+          <span class="track"><span class="fill" style="width:${(bm.target.radar[ax.key] ?? 0) * 100}%; background:${RADAR_COLORS[0]}"></span></span>
+        </div>`;
+      const peerRows = peers
+        .map((row, i) => {
+          const color = RADAR_COLORS[(i + 1) % RADAR_COLORS.length];
+          return `
+        <div class="axis-bar-row">
+          <span class="name" title="${esc(row.maker || "")}">${esc(row.maker || "")}</span>
+          <span class="track"><span class="fill" style="width:${(row.radar[ax.key] ?? 0) * 100}%; background:${color}"></span></span>
+        </div>`;
+        })
+        .join("");
+      return `<div class="axis-bar-group"><div class="axis-label">${esc(ax.label)}</div>${targetRow}${peerRows}</div>`;
+    })
+    .join("") + `<div class="muted" style="font-size:11px;">값이 없는 축은 0으로 그립니다 · 이 가격대 안에서의 상대 위치입니다</div>`;
+}
+
+function axisTableView(bm) {
+  if (!bm.peer_count) return `<div class="muted">같은 대륙·품목·가격대에 견줄 다른 제품이 아직 없습니다.</div>`;
+  const axes = [["price_usd", "가격"], ["pod_count", "POD"], ["rating", "평가 점수"], ["energy", "에너지"], ["ai_count", "AI기능"]];
+  return `
+    <table class="bm-table">
+      <thead><tr><th>경쟁 제품</th>${axes.map(([, label]) => `<th>${esc(label)}</th>`).join("")}</tr></thead>
+      <tbody>${bm.rows.map(bmAxisRow).join("")}</tbody>
+    </table>`;
+}
+
+function axisChartView(bm, type) {
+  if (type === "bar") return axisBarView(bm);
+  if (type === "table") return axisTableView(bm);
+  return `<div class="bm-radar">${radarSvg(bm)}</div>`;
+}
+
+function shareBarView(bm) {
   const rows = bm.market_share || [];
   if (!rows.length) return "";
   const max = Math.max(...rows.map((r) => r.share_pct), 1);
+  return rows
+    .map(
+      (r) => `
+    <div class="share-row${r.is_target ? " is-target" : ""}">
+      <span class="label" title="${esc(r.maker)}">${esc(r.maker)}</span>
+      <span class="bar-track"><span class="bar-fill" style="width:${(r.share_pct / max) * 100}%"></span></span>
+      <span class="pct">${r.share_pct}% (${r.count})</span>
+    </div>`
+    )
+    .join("");
+}
+
+const SHARE_PIE_COLORS = ["#0f766e", "#c2410c", "#7c3aed", "#0369a1", "#a16207", "#be185d", "#334155", "#65a30d"];
+
+function sharePieView(bm) {
+  const rows = bm.market_share || [];
+  if (!rows.length) return "";
+  let acc = 0;
+  const stops = rows
+    .map((r, i) => {
+      const from = acc;
+      acc += r.share_pct;
+      return `${SHARE_PIE_COLORS[i % SHARE_PIE_COLORS.length]} ${from}% ${acc}%`;
+    })
+    .join(", ");
+  const legend = rows
+    .map(
+      (r, i) => `
+    <div class="row2">
+      <span class="dot" style="background:${SHARE_PIE_COLORS[i % SHARE_PIE_COLORS.length]}"></span>
+      <span${r.is_target ? ' style="font-weight:700;"' : ""}>${esc(r.maker)} · ${r.share_pct}% (${r.count})</span>
+    </div>`
+    )
+    .join("");
   return `
-    <div class="bm-share">
-      <b style="font-size:13px;">이 가격대의 브랜드 비중</b>
-      <div class="muted" style="font-size:11px; margin-bottom:8px;">${esc(bm.market_share_note || "")}</div>
-      ${rows
-        .map(
-          (r) => `
-        <div class="share-row${r.is_target ? " is-target" : ""}">
-          <span class="label" title="${esc(r.maker)}">${esc(r.maker)}</span>
-          <span class="bar-track"><span class="bar-fill" style="width:${(r.share_pct / max) * 100}%"></span></span>
-          <span class="pct">${r.share_pct}% (${r.count})</span>
-        </div>`
-        )
-        .join("")}
+    <div class="bm-pie">
+      <div class="donut" style="background: conic-gradient(${stops}); mask: radial-gradient(circle, transparent 38%, #000 39%);"></div>
+      <div class="bm-pie-legend">${legend}</div>
     </div>`;
+}
+
+function shareChartView(bm, type) {
+  return type === "pie" ? sharePieView(bm) : shareBarView(bm);
+}
+
+function chartToggle(name, options, current, targetId) {
+  return `<div class="row chart-toggle" data-target="${esc(targetId)}">
+    <span class="muted">${esc(name)}</span>
+    ${options
+      .map(
+        ([key, label]) =>
+          `<span class="chip mini${key === current ? " active" : ""}" data-toggle="${key}">${esc(label)}</span>`
+      )
+      .join("")}
+  </div>`;
+}
+
+let bmData = null;
+let axisChartType = "radar";
+let shareChartType = "bar";
+
+function renderBmPanel() {
+  const bm = bmData;
+  if (!bm) return;
+  $("bmPanel").innerHTML = `
+    <div class="card" id="bmCard">
+      <div class="row between">
+        <b>🎯 BM 비교 · ${esc(bm.target.name || bm.target.model || "")} <span class="muted">(${esc(bm.target.band || "")} 가격대, 경쟁 제품 ${bm.peer_count}개)</span></b>
+        <button class="ghost" id="bmCloseBtn">닫기</button>
+      </div>
+      ${bm.strengths.length ? `<div class="sw-line">강점: ${bm.strengths.map((s) => `<span class="win">${esc(s)}</span>`).join(", ")}</div>` : ""}
+      ${bm.weaknesses.length ? `<div class="sw-line">약점: ${bm.weaknesses.map((s) => `<span class="lose">${esc(s)}</span>`).join(", ")}</div>` : ""}
+      ${!bm.strengths.length && !bm.weaknesses.length ? `<div class="muted sw-line">뚜렷한 강점·약점 없이 팽팽합니다.</div>` : ""}
+
+      ${chartToggle("축 비교 보기", [["radar", "스파이더"], ["bar", "막대"], ["table", "표"]], axisChartType, "axisChartBox")}
+      <div id="axisChartBox">${axisChartView(bm, axisChartType)}</div>
+
+      ${chartToggle("이 가격대 브랜드 비중 보기", [["bar", "막대"], ["pie", "파이"]], shareChartType, "shareChartBox")}
+      <div class="muted" style="font-size:11px; margin-bottom:4px;">${esc(bm.market_share_note || "")}</div>
+      <div id="shareChartBox" class="bm-share">${shareChartView(bm, shareChartType)}</div>
+
+      <div class="row" style="margin-top:12px; align-items:flex-end;">
+        <div class="field">
+          <label>제3자 평가 점수 넣기 <span class="muted">(예: Consumer Reports — 구독 벽 뒤라 직접 입력만 지원)</span></label>
+          <div class="row">
+            <input id="rvSource" placeholder="평가한 곳 (예: Consumer Reports)" style="width:200px;">
+            <input id="rvScore" type="number" step="0.1" placeholder="점수">
+            <input id="rvScale" type="number" step="0.5" placeholder="만점(기본 5)" style="width:110px;">
+            <button id="rvSaveBtn">저장</button>
+          </div>
+        </div>
+      </div>
+    </div>`;
+
+  $("bmCloseBtn").addEventListener("click", () => { $("bmPanel").innerHTML = ""; bmData = null; });
+  $("bmPanel").querySelectorAll("[data-toggle]").forEach((el) => {
+    el.addEventListener("click", () => {
+      const targetId = el.closest(".chart-toggle").dataset.target;
+      if (targetId === "axisChartBox") axisChartType = el.dataset.toggle;
+      else shareChartType = el.dataset.toggle;
+      renderBmPanel();
+    });
+  });
+  $("rvSaveBtn").addEventListener("click", async () => {
+    try {
+      await api("/api/review-score", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          url: bm.target.url, source: $("rvSource").value.trim(),
+          score: Number($("rvScore").value), scale: Number($("rvScale").value) || 5,
+        }),
+      });
+      showMessage("평가 점수를 저장했습니다.");
+      await showBenchmark(bm.target.url);
+    } catch (e) {
+      showError(String(e.message || e));
+    }
+  });
+  $("bmCard").scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 async function showBenchmark(url) {
   showError(""); showMessage("");
   try {
-    const bm = await api(`/api/benchmark?url=${encodeURIComponent(url)}`);
-    const axes = [["price_usd", "가격"], ["pod_count", "POD"], ["rating", "평가 점수"], ["energy", "에너지"], ["ai_count", "AI기능"]];
-    $("bmPanel").innerHTML = `
-      <div class="card" id="bmCard">
-        <div class="row between">
-          <b>🎯 BM 비교 · ${esc(bm.target.name || bm.target.model || "")} <span class="muted">(${esc(bm.target.band || "")} 가격대, 경쟁 제품 ${bm.peer_count}개)</span></b>
-          <button class="ghost" id="bmCloseBtn">닫기</button>
-        </div>
-        ${bm.strengths.length ? `<div class="sw-line">강점: ${bm.strengths.map((s) => `<span class="win">${esc(s)}</span>`).join(", ")}</div>` : ""}
-        ${bm.weaknesses.length ? `<div class="sw-line">약점: ${bm.weaknesses.map((s) => `<span class="lose">${esc(s)}</span>`).join(", ")}</div>` : ""}
-        ${!bm.strengths.length && !bm.weaknesses.length ? `<div class="muted sw-line">뚜렷한 강점·약점 없이 팽팽합니다.</div>` : ""}
-        <div class="bm-cols">
-          <div class="bm-radar">${radarSvg(bm)}</div>
-          ${marketShareView(bm)}
-        </div>
-        ${bm.peer_count ? `
-        <table class="bm-table">
-          <thead><tr><th>경쟁 제품</th>${axes.map(([, label]) => `<th>${esc(label)}</th>`).join("")}</tr></thead>
-          <tbody>${bm.rows.map(bmAxisRow).join("")}</tbody>
-        </table>` : `<div class="muted">같은 대륙·품목·가격대에 견줄 다른 제품이 아직 없습니다.</div>`}
-        <div class="row" style="margin-top:12px; align-items:flex-end;">
-          <div class="field">
-            <label>제3자 평가 점수 넣기 <span class="muted">(예: Consumer Reports — 구독 벽 뒤라 직접 입력만 지원)</span></label>
-            <div class="row">
-              <input id="rvSource" placeholder="평가한 곳 (예: Consumer Reports)" style="width:200px;">
-              <input id="rvScore" type="number" step="0.1" placeholder="점수">
-              <input id="rvScale" type="number" step="0.5" placeholder="만점(기본 5)" style="width:110px;">
-              <button id="rvSaveBtn">저장</button>
-            </div>
-          </div>
-        </div>
-      </div>`;
-    $("bmCloseBtn").addEventListener("click", () => { $("bmPanel").innerHTML = ""; });
-    $("rvSaveBtn").addEventListener("click", async () => {
-      try {
-        await api("/api/review-score", {
-          method: "POST", headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            url, source: $("rvSource").value.trim(),
-            score: Number($("rvScore").value), scale: Number($("rvScale").value) || 5,
-          }),
-        });
-        showMessage("평가 점수를 저장했습니다.");
-        await showBenchmark(url);
-      } catch (e) {
-        showError(String(e.message || e));
-      }
-    });
-    $("bmCard").scrollIntoView({ behavior: "smooth", block: "start" });
+    bmData = await api(`/api/benchmark?url=${encodeURIComponent(url)}`);
+    renderBmPanel();
   } catch (e) {
     showError(String(e.message || e));
   }
