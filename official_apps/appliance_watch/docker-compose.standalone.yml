@@ -1,0 +1,47 @@
+# 가전 신제품 조사 앱을 혼자 띄우는 최소 구성입니다. Workflow_Auto 의 나머지
+# 8개 공식 앱·백엔드·프론트엔드·postgres 는 전혀 필요 없습니다 — 이 파일 하나로
+# 컨테이너 하나만 뜹니다.
+#
+# 실행:
+#   cd official_apps/appliance_watch
+#   docker compose -f docker-compose.standalone.yml up -d --build
+#   http://localhost:9119/       화면
+#   http://localhost:9119/mcp    오케스트레이터(Claude Desktop, Cursor 등)가 부르는 주소
+#
+# .env 로 바꿀 수 있는 값(전부 선택):
+#   LLM_BASE_URL, LLM_API_KEY, LLM_MODEL   POD/AI기능/에너지효율을 LLM 으로 정리
+#   SEARCH_PROVIDER, SEARCH_API_URL        홈페이지 주소를 모를 때 스스로 찾기
+#   HTTPS_PROXY                            회사 프록시를 거쳐야 할 때
+#   BROWSER_FETCH_FALLBACK, CHROMIUM_EXECUTABLE_PATH  봇 차단 사이트 우회(기본 켜짐)
+#
+# 나중에 Workflow_Auto 에 합치고 싶으면: 이 컨테이너는 그대로 두고, 플랫폼의
+# config/apps.seed.official.json 에 이미 등록된 endpoint(9119/mcp)를 그 호스트
+# 주소로 바꿔 주면 오케스트레이터가 바로 부릅니다.
+services:
+  appliance-watch:
+    build:
+      context: ..
+      args:
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-}
+        PIP_TRUSTED_HOST: ${PIP_TRUSTED_HOST:-}
+    image: appliance-watch-standalone
+    command: ["python", "-m", "appliance_watch.server"]
+    environment:
+      DATA_DIR: /srv/data
+      PORT: "9119"
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_API_KEY: ${LLM_API_KEY:-not-needed}
+      LLM_MODEL: ${LLM_MODEL:-gauss}
+      SEARCH_PROVIDER: ${SEARCH_PROVIDER:-}
+      SEARCH_API_URL: ${SEARCH_API_URL:-}
+      SEARCH_API_KEY: ${SEARCH_API_KEY:-}
+      HTTPS_PROXY: ${HTTPS_PROXY:-}
+      BROWSER_FETCH_FALLBACK: ${BROWSER_FETCH_FALLBACK:-true}
+      CHROMIUM_EXECUTABLE_PATH: ${CHROMIUM_EXECUTABLE_PATH:-}
+    volumes:
+      - appliance_watch_data:/srv/data
+    ports: ["9119:9119"]
+    restart: unless-stopped
+
+volumes:
+  appliance_watch_data:

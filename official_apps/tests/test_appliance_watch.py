@@ -418,6 +418,18 @@ def test_모르는_대륙이나_품목은_목록을_알려준다(fake_web):
     assert "categories" in service.scan("north_america", "spaceship")
 
 
+def test_단독_실행_화면이_바로_열린다(fake_web):
+    # 이 앱 하나만 띄웠을 때(Workflow_Auto 없이) 바로 열어 보는 화면입니다.
+    from appliance_watch import server
+
+    client = TestClient(server.build_app())
+    r = client.get("/")
+    assert r.status_code == 200
+    assert "text/html" in r.headers["content-type"]
+    assert "가전 신제품 조사" in r.text
+    assert "/api/catalog" in r.text  # 같은 앱의 API 를 부르는지
+
+
 # ── 화면용 주소 ───────────────────────────────────────────────────────
 def test_화면용_주소로_조사하고_비교한다(fake_web):
     from appliance_watch import server

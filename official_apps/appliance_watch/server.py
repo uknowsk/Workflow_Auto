@@ -1,23 +1,32 @@
 """가전 신제품 조사 앱 - 글로벌 탑 20 가전사의 품목별 신제품을 찾아 가격대별로 정리합니다.
 
-한 프로세스가 두 가지를 같이 띄웁니다.
+한 프로세스가 세 가지를 같이 띄웁니다.
   /mcp   - 오케스트레이터가 부르는 MCP 주소 ("북미 조리기기 신제품 조사해줘")
-  /api/* - 화면(/appliances)이 부르는 주소 (고르고, 누르고, 비교하는 화면)
+  /api/* - 화면이 부르는 주소 (고르고, 누르고, 비교하는 화면)
+  /      - 이 앱 혼자 띄웠을 때 바로 열어 볼 수 있는 가벼운 화면(web/index.html).
+           Workflow_Auto 의 /appliances 화면(스펙 비교표·주기 감시·출처 관리
+           포함)과 별개로, 이 앱 하나만 켰을 때도 브라우저로 바로 쓸 수 있게
+           둔 최소 기능 버전입니다. 둘 다 같은 /api/* 를 부릅니다.
 
 이 앱은 바깥 인터넷(제조사 홈페이지)에 나가야 합니다. 폐쇄망이면 .env 에
 HTTPS_PROXY 를 넣거나, 인터넷이 되는 서버에서 따로 띄우세요.
 
-실행:  PORT=9119 python -m appliance_watch.server   ->  http://localhost:9119/mcp
+실행:  PORT=9119 python -m appliance_watch.server
+  -> http://localhost:9119/      (화면)
+  -> http://localhost:9119/mcp   (오케스트레이터)
 """
 
 import os
+from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 from starlette.middleware.cors import CORSMiddleware
 from starlette.requests import Request
-from starlette.responses import JSONResponse
+from starlette.responses import FileResponse, JSONResponse
 
 from . import service
+
+_WEB_DIR = Path(__file__).parent / "web"
 
 mcp = FastMCP(
     "가전 신제품 조사",
@@ -268,6 +277,13 @@ async def api_run_watch(request: Request):
 @mcp.custom_route("/api/health", methods=["GET"])
 async def api_health(request: Request):
     return JSONResponse({"status": "ok", "app": "appliance-watch"})
+
+
+# ── 단독 실행용 화면 ─────────────────────────────────────────────────────
+@mcp.custom_route("/", methods=["GET"])
+async def web_ui(request: Request):
+    """이 앱 혼자 띄웠을 때 바로 열어 볼 수 있는 화면(web/index.html)."""
+    return FileResponse(_WEB_DIR / "index.html")
 
 
 def build_app():

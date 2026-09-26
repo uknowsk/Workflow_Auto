@@ -67,7 +67,8 @@ docs_assistant/  문서 요약·번역 (사내 LLM 사용)
 report_forms/    보고서 양식 제작 (catalog.py 에 종류·항목 표, builder.py 가 파일 생성)
 appliance_watch/ 가전 신제품 조사 (catalog.py 대륙·글로벌탑20·품목·가격대 표, discover.py 출처 찾기,
                  extract.py 제품 페이지 읽기, pod.py 차별점·AI기능·에너지효율 정리,
-                 service.py 전체 흐름)
+                 service.py 전체 흐름, web/index.html 단독 실행용 화면,
+                 docker-compose.standalone.yml 단독 배포용)
 
 meeting/         회의록 정리   (시나리오 앱, 자기 이미지·requirements 를 따로 씀)
 tasks/           할 일/수명업무 (시나리오 앱)
@@ -301,7 +302,19 @@ TASKS_DB=./tasks.db PORT=9103 python server.py
 
 **영향력 기준 글로벌 탑 20** 가전사의 **새로 나온 제품**을 공식 홈페이지에서 찾아
 가격·POD(차별점)·에너지 효율·AI 기능·스펙을 정리하고, **가격대별로** 나란히
-비교합니다. 화면은 `http://localhost:3000/appliances` 입니다.
+비교합니다.
+
+**두 가지로 씁니다** — 어느 쪽이든 코드·데이터는 같습니다.
+- **Workflow_Auto 에 통합**: 플랫폼과 같이 띄우면(`docker compose up`) 오케스트레이터가
+  MCP(`/mcp`)로 부르고, 화면은 `http://localhost:3000/appliances` (스펙 비교표·주기
+  감시·출처 관리까지 다 있는 전체 기능 화면).
+- **이 앱만 단독 실행**: Workflow_Auto 의 나머지 8개 앱·프론트엔드·postgres 없이
+  이 앱 하나만 떠도 됩니다. `python -m appliance_watch.server` 또는
+  `docker compose -f appliance_watch/docker-compose.standalone.yml up -d --build` 로
+  띄우면 `http://localhost:9119/` 를 바로 열어 쓸 수 있습니다(핵심 기능만 담은
+  가벼운 화면 — `appliance_watch/web/index.html`, React/Next 없이 이 앱이 직접
+  서빙). `/mcp` 도 그대로 열려 있어서 Claude Desktop·Cursor 같은 외부 AI 에이전트가
+  바로 붙을 수 있습니다.
 
 대륙별 탑 5 가 아니라 **글로벌 탑 20 을 하나의 순위표로 통일**했습니다. 대륙 매출
 순위로만 고르면 보쉬·미얼레·KitchenAid 처럼 특정 대륙 5위 안에는 못 들어도 전 세계

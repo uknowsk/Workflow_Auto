@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>가전 신제품 조사</title>
+<link rel="icon" href="data:,">
+<style>
+  :root {
+    --ink: #16181d; --muted: #6b7280; --line: #e5e7eb; --bg: #f7f8fa;
+    --card: #ffffff; --accent: #0f766e; --accent-ink: #ffffff;
+    --chip: #eef2f1; --chip-active: #0f766e; --danger: #b91c1c; --ok: #166534;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 14px/1.5 -apple-system, "Segoe UI", "Malgun Gothic", sans-serif;
+  }
+  header { padding: 20px 24px 8px; }
+  header h1 { margin: 0 0 4px; font-size: 20px; }
+  header p { margin: 0; color: var(--muted); font-size: 13px; }
+  main { max-width: 1000px; margin: 0 auto; padding: 16px 24px 60px; }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    padding: 18px; margin-bottom: 16px;
+  }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .row.between { justify-content: space-between; }
+  label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+  select, button, input {
+    font: inherit; border-radius: 8px; border: 1px solid var(--line);
+    padding: 8px 10px; background: #fff; color: var(--ink);
+  }
+  button { cursor: pointer; }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+  button.primary:disabled { opacity: .55; cursor: default; }
+  button.ghost { background: #fff; }
+  .field { margin-right: 4px; }
+  .chip-group { margin: 4px 0 10px; }
+  .chip-group .tier-label { font-size: 11px; color: var(--muted); margin: 6px 0 4px; }
+  .chip {
+    display: inline-flex; align-items: center; padding: 5px 11px; border-radius: 999px;
+    background: var(--chip); border: 1px solid var(--line); margin: 2px 4px 2px 0;
+    cursor: pointer; font-size: 13px; user-select: none;
+  }
+  .chip.active { background: var(--chip-active); color: #fff; border-color: var(--chip-active); }
+  .muted { color: var(--muted); font-size: 12px; }
+  .alert { padding: 10px 14px; border-radius: 8px; margin-bottom: 14px; font-size: 13px; }
+  .alert.crit { background: #fef2f2; color: var(--danger); border: 1px solid #fecaca; }
+  .alert.ok { background: #f0fdf4; color: var(--ok); border: 1px solid #bbf7d0; }
+  pre.log {
+    background: #0f172a; color: #d1fae5; padding: 10px 12px; border-radius: 8px;
+    font-size: 12px; max-height: 160px; overflow: auto; white-space: pre-wrap;
+  }
+  .bands { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+  .band h3 { margin: 0 0 2px; font-size: 13px; }
+  .band .count { color: var(--muted); font-size: 12px; margin-bottom: 8px; }
+  .product {
+    border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; margin-bottom: 8px;
+    background: #fcfcfd;
+  }
+  .product a { color: var(--ink); font-weight: 600; text-decoration: none; }
+  .product a:hover { text-decoration: underline; }
+  .product .tag {
+    display: inline-block; font-size: 11px; background: var(--chip); border-radius: 6px;
+    padding: 1px 6px; margin-right: 4px; color: var(--muted);
+  }
+  .product .price { font-weight: 700; margin: 4px 0; }
+  .product ul { margin: 4px 0 0; padding-left: 18px; font-size: 12.5px; }
+  .badge-new {
+    display: inline-block; background: var(--accent); color: #fff; font-size: 10px;
+    border-radius: 5px; padding: 1px 6px; margin-left: 6px; vertical-align: middle;
+  }
+  footer { text-align: center; color: var(--muted); font-size: 11px; padding: 20px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🔎 가전 신제품 조사</h1>
+  <p>영향력 기준 글로벌 탑 20 가전사 홈페이지에서 신제품을 찾아 가격 · POD · 에너지효율 · AI기능을 정리합니다 (단독 실행 화면 — 핵심 기능만 담은 가벼운 버전입니다)</p>
+</header>
+<main>
+  <div id="error"></div>
+  <div id="message"></div>
+
+  <div class="card">
+    <div class="row">
+      <div class="field">
+        <label for="region">대륙</label>
+        <select id="region"></select>
+      </div>
+      <div class="field">
+        <label for="category">품목</label>
+        <select id="category"></select>
+      </div>
+      <div class="field">
+        <label for="perMaker">회사당 최대 제품 수</label>
+        <select id="perMaker">
+          <option value="4">4개</option>
+          <option value="8" selected>8개</option>
+          <option value="15">15개</option>
+          <option value="30">30개</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="makerField" style="margin-top:12px;">
+      <label>조사 대상 (누르면 빼고 넣을 수 있어요)</label>
+      <div id="makerChips"></div>
+    </div>
+
+    <div class="row between" style="margin-top: 10px;">
+      <button class="primary" id="scanBtn">신제품 찾기</button>
+      <span class="muted" id="engineInfo"></span>
+    </div>
+  </div>
+
+  <div class="card" id="logCard" style="display:none;">
+    <div class="row between">
+      <b>진행 기록</b>
+      <span class="muted" id="logSummary"></span>
+    </div>
+    <pre class="log" id="log"></pre>
+  </div>
+
+  <div id="results"></div>
+</main>
+<footer>appliance_watch · 단독 실행 화면 · 스펙 비교표·주기 감시·출처 관리는 Workflow_Auto 통합 화면에서 이용하세요</footer>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let catalog = null;
+let selectedMakers = new Set();
+
+function money(value, currency) {
+  if (value === null || value === undefined) return "가격 미확인";
+  try {
+    return new Intl.NumberFormat("ko-KR", { style: "currency", currency: currency || "USD" }).format(value);
+  } catch { return `${value} ${currency || ""}`; }
+}
+
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+function showError(msg) {
+  $("error").innerHTML = msg ? `<div class="alert crit">${esc(msg)}</div>` : "";
+}
+function showMessage(msg) {
+  $("message").innerHTML = msg ? `<div class="alert ok">${esc(msg)}</div>` : "";
+}
+
+async function api(path, opts) {
+  const res = await fetch(path, opts);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || data.ok === false) throw new Error(data.error || `요청 실패 (${res.status})`);
+  return data;
+}
+
+function tierOf(name) {
+  const b = (catalog.global_brands || []).find((x) => x.name === name);
+  return b ? b.tier : "";
+}
+
+function renderMakerChips() {
+  const region = catalog.regions.find((r) => r.key === $("region").value);
+  const makers = region ? region.makers : [];
+  const tiers = ["글로벌 톱티어", "프리미엄", "지역 강세"];
+  const groups = tiers.map((t) => ({ tier: t, makers: makers.filter((m) => tierOf(m.name) === t) }))
+    .filter((g) => g.makers.length);
+  $("makerChips").innerHTML = groups.map((g) => `
+    <div class="tier-label">${esc(g.tier)}</div>
+    <div>${g.makers.map((m) => `<span class="chip${selectedMakers.has(m.name) ? " active" : ""}" data-name="${esc(m.name)}">${esc(m.name)}</span>`).join("")}</div>
+  `).join("");
+  $("makerChips").querySelectorAll(".chip").forEach((el) => {
+    el.addEventListener("click", () => {
+      const name = el.dataset.name;
+      if (selectedMakers.has(name)) selectedMakers.delete(name); else selectedMakers.add(name);
+      renderMakerChips();
+    });
+  });
+}
+
+function resetMakersForRegion() {
+  const region = catalog.regions.find((r) => r.key === $("region").value);
+  const makers = region ? region.makers : [];
+  const topTier = makers.filter((m) => tierOf(m.name) === "글로벌 톱티어");
+  selectedMakers = new Set((topTier.length ? topTier : makers).map((m) => m.name));
+  renderMakerChips();
+}
+
+async function loadCatalog() {
+  catalog = await api("/api/catalog");
+  $("region").innerHTML = catalog.regions.map((r) => `<option value="${r.key}">${esc(r.label)}</option>`).join("");
+  $("category").innerHTML = catalog.categories.map((c) => `<option value="${c.key}">${esc(c.label)}</option>`).join("");
+  $("engineInfo").textContent =
+    `POD 뽑기: ${catalog.llm_enabled ? "사내 LLM" : "규칙(경쟁사에 없는 특징)"} · 홈페이지 자동 검색: ${catalog.search_enabled ? "켜짐" : "꺼짐 (기본 주소 사용)"}`;
+  resetMakersForRegion();
+  await reloadCompare();
+}
+
+function bandView(band) {
+  const products = band.products || [];
+  return `
+    <div class="band">
+      <h3>${esc(band.label)} · ${band.min_usd != null ? `$${band.min_usd.toLocaleString()}` : "$0"}${band.max_usd != null ? ` ~ $${band.max_usd.toLocaleString()}` : " 이상"}</h3>
+      <div class="count">${products.length}개${band.median_usd != null ? ` · 중앙값 $${band.median_usd.toLocaleString()}` : ""}</div>
+      ${products.length ? products.map(productView).join("") : '<div class="muted">없음</div>'}
+    </div>`;
+}
+
+function productView(p) {
+  const pods = (p.pods || []).map((x) => `<li>${esc(x)}</li>`).join("");
+  const ai = (p.ai_features || []).map((x) => `<li>${esc(x)}</li>`).join("");
+  return `
+    <div class="product">
+      <a href="${esc(p.url)}" target="_blank" rel="noreferrer">${esc(p.name || p.model)}</a>
+      ${p.is_new ? `<span class="badge-new" title="${esc(p.new_reason || "")}">NEW</span>` : ""}
+      <div style="margin-top:4px;">
+        <span class="tag">${esc(p.maker)}</span>${p.model ? `<span class="tag">${esc(p.model)}</span>` : ""}
+      </div>
+      <div class="price">${money(p.price, p.currency)}${p.currency !== "USD" && p.price_usd != null ? ` <span class="muted">≈ ${money(p.price_usd)}</span>` : ""}</div>
+      ${p.energy_rating ? `<div class="muted">⚡ ${esc(p.energy_rating)}</div>` : ""}
+      ${pods ? `<div class="muted" style="margin-top:6px;">POD (${p.pod_method === "llm" ? "LLM" : "규칙"})</div><ul>${pods}</ul>` : ""}
+      ${ai ? `<div class="muted" style="margin-top:6px;">🤖 AI·연결 기능 (${p.ai_method === "llm" ? "LLM" : "규칙"})</div><ul>${ai}</ul>` : ""}
+    </div>`;
+}
+
+async function reloadCompare() {
+  const region = $("region").value, category = $("category").value;
+  try {
+    const cmp = await api(`/api/compare?region=${encodeURIComponent(region)}&category=${encodeURIComponent(category)}`);
+    if (!cmp.total) {
+      $("results").innerHTML = `<div class="card muted">아직 모아 둔 제품이 없습니다. 위에서 «신제품 찾기»를 눌러 보세요.</div>`;
+      return;
+    }
+    $("results").innerHTML = `<div class="card"><div class="bands">${cmp.bands.map(bandView).join("")}</div></div>`;
+  } catch (e) {
+    showError(String(e.message || e));
+  }
+}
+
+async function scan() {
+  const btn = $("scanBtn");
+  btn.disabled = true;
+  btn.textContent = "홈페이지 돌아보는 중… (몇 분 걸릴 수 있어요)";
+  showError(""); showMessage("");
+  $("logCard").style.display = "block";
+  $("log").textContent = "";
+  try {
+    const body = {
+      region: $("region").value,
+      category: $("category").value,
+      makers: Array.from(selectedMakers),
+      max_per_maker: Number($("perMaker").value),
+    };
+    const result = await api("/api/scan", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    $("log").textContent = (result.log || []).join("\n");
+    $("logSummary").textContent = `제품 ${result.product_count}개 · 신제품 ${result.new_count}개`;
+    showMessage(`제품 ${result.product_count}개를 정리했습니다. 그중 신제품 ${result.new_count}개.`);
+    await reloadCompare();
+  } catch (e) {
+    showError(String(e.message || e));
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "신제품 찾기";
+  }
+}
+
+$("scanBtn").addEventListener("click", scan);
+
+(async function init() {
+  try {
+    await loadCatalog();
+  } catch (e) {
+    showError("가전 신제품 조사 앱에 연결하지 못했습니다: " + String(e.message || e));
+    return;
+  }
+  $("region").addEventListener("change", async () => { resetMakersForRegion(); await reloadCompare(); });
+  $("category").addEventListener("change", reloadCompare);
+})();
+</script>
+</body>
+</html>
