@@ -330,6 +330,22 @@ def test_사이트맵이_없으면_메뉴를_따라간다(fake_web):
     assert disc.sources[0] == {"type": "listing", "url": f"{WP}/kitchen/cooking/ranges/", "hits": 2}
 
 
+def test_품목_목록_페이지_안의_다른_부서_제품은_안_섞인다(fake_web):
+    # Samsung 처럼 한 페이지에 여러 부서 제품이 같이 링크된 큰 종합몰 사이트를
+    # 흉내냅니다. 품목 목록 페이지 자체는 "cooking" 이 맞아도, 그 안의 TV
+    # 링크(모델명처럼 생겨서 looks_like_product 는 통과함)까지 조리기기로
+    # 잘못 집으면 안 됩니다.
+    listing = f"{WP}/kitchen/cooking/ranges/"
+    fake_web[listing] = fake_web[listing].replace(
+        "</body>",
+        "<a href='/tvs/qled/p.55-inch-qled-4k-tv.QN55Q60D.html'>55 inch QLED 4K TV</a></body>",
+    )
+    disc = discover.discover("Whirlpool", "north_america", "cooking", WP)
+    urls = [c.url for c in disc.candidates]
+    assert not any("QN55Q60D" in u for u in urls)
+    assert len(disc.candidates) == 2  # 기존 레인지 2개만, TV 는 안 섞임
+
+
 # ── 전체 흐름 ─────────────────────────────────────────────────────────
 def test_조사하면_가격_POD_스펙이_정리된다(fake_web):
     result = service.scan("north_america", "cooking")

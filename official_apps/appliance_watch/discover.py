@@ -251,10 +251,15 @@ def from_listing_pages(site: str, category: str, disc: Discovery) -> None:
             html = web.fetch_text(listing)
         except Exception:
             continue
+        # 품목 목록 페이지 자체는 category 와 맞아도, 그 안의 링크는 다른 부서
+        # 제품(예: Samsung 의 TV·모니터)일 수 있습니다. 링크 하나하나도 다시
+        # 확인해야 큰 종합몰 사이트에서 엉뚱한 카테고리가 안 섞입니다.
         found = [
             Candidate(href, "", "listing")
-            for href, _ in _links(html, listing)
-            if _same_site(href, site) and looks_like_product(href)
+            for href, text in _links(html, listing)
+            if _same_site(href, site)
+            and looks_like_product(href)
+            and catalog.keyword_hit(f"{href} {text}", category)
         ]
         if found:
             disc.candidates.extend(found)
@@ -304,8 +309,10 @@ def discover(
                 html = web.fetch_text(source["url"])
                 disc.candidates.extend(
                     Candidate(h, "", "listing")
-                    for h, _ in _links(html, source["url"])
-                    if _same_site(h, site) and looks_like_product(h)
+                    for h, text in _links(html, source["url"])
+                    if _same_site(h, site)
+                    and looks_like_product(h)
+                    and catalog.keyword_hit(f"{h} {text}", category)
                 )
             except Exception:
                 pass
