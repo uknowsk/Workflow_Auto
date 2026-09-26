@@ -134,6 +134,7 @@ export type Product = {
   new_reason: string;
   pods: string[];
   pod_method: "llm" | "rule";
+  energy_rating: string;
   specs: Record<string, string>;
   features: string[];
   first_seen: string;

@@ -206,6 +206,20 @@ def test_두번_겹쳐_인코딩된_글자도_풀어서_읽는다():
     assert product["name"] == '30" Induction Cooktop'
 
 
+def test_에너지_효율은_스펙_표_항목_이름으로_찾는다():
+    specs = {"Capacity": "5.3 cu. ft.", "Annual Energy Use": "220 kWh/yr", "Width": "30 in"}
+    assert extract._energy_rating(specs, "", "") == "Annual Energy Use: 220 kWh/yr"
+
+
+def test_에너지_효율은_배지_설명에서도_찾는다():
+    # 스펙 표에 없어도 "Energy Star" 배지나 숫자+kWh 문구가 있으면 찾습니다.
+    assert extract._energy_rating({}, "ENERGY STAR Certified", "") == "Energy Star Certified"
+    assert extract._energy_rating({}, "", "Uses only 210 kWh/year of electricity.") == "210 kWh/year"
+    assert extract._energy_rating({}, "", "Rated Energy Class A+++ for efficiency.") == "Energy Class A+++"
+    # 아무 단서도 없으면 조용히 빈 문자열입니다(다른 스펙처럼 억지로 채우지 않음).
+    assert extract._energy_rating({"Width": "30 in"}, "New!", "A great range.") == ""
+
+
 def test_주소_끝_모델명으로도_찾는다():
     assert extract._model_from_url(
         "https://www.whirlpool.com/kitchen/cooking/cooktops/4-burner-elements/"

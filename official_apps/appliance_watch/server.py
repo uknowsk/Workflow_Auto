@@ -45,6 +45,7 @@ def _brief(product: dict) -> dict:
         "is_new": product.get("is_new"),
         "new_reason": product.get("new_reason"),
         "pods": product.get("pods", []),
+        "energy_rating": product.get("energy_rating") or "",
         "key_specs": dict(list(specs.items())[:8]),
         "url": product.get("url"),
     }

@@ -103,6 +103,11 @@ function ProductCard({
           <Muted>≈ {money(product.price_usd)}</Muted>
         )}
       </div>
+      {product.energy_rating && (
+        <div style={{ marginTop: "var(--space-2)" }}>
+          <Tag>⚡ {product.energy_rating}</Tag>
+        </div>
+      )}
       {product.pods?.length > 0 && (
         <div style={{ marginTop: "var(--space-2)" }}>
           <Muted>POD {product.pod_method === "llm" ? "(LLM)" : "(규칙)"}</Muted>
@@ -465,6 +470,12 @@ export default function Appliances() {
                         <td>POD</td>
                         {compareSet.map((p) => (
                           <td key={p.id}>{(p.pods || []).join(" / ")}</td>
+                        ))}
+                      </tr>
+                      <tr>
+                        <td>에너지 효율</td>
+                        {compareSet.map((p) => (
+                          <td key={p.id}>{p.energy_rating || "–"}</td>
                         ))}
                       </tr>
                       {comparison.spec_keys.map((key) => (

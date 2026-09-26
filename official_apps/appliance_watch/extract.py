@@ -29,6 +29,26 @@ _TITLE_MODEL_GLUE = re.compile(r"\s*\|\^\|\s*")
 # 모델명은 보통 영문+숫자가 섞인 5자 이상 토막입니다(WFGS7530RZ, JBP27DMWW).
 _MODEL_LIKE = re.compile(r"^(?=[a-z0-9-]*\d)(?=[a-z0-9-]*[a-z])[a-z0-9-]{5,}$", re.I)
 
+# ── 에너지 효율 ─────────────────────────────────────────────────────────
+# 스펙 표의 "항목 이름"이 이 말을 담고 있으면 그 줄이 에너지 효율 정보입니다.
+# (값이 아니라 항목 이름 기준입니다. 값만 봐서는 "5.3 cu. ft." 같은 다른
+# 스펙과 구별이 안 됩니다.)
+_ENERGY_SPEC_KEY = re.compile(
+    r"energy\s*(star|rating|guide|efficien|label|class|consumption|use)|"
+    r"annual\s*energy|kwh|에너지\s*(효율|소비|등급)|정격\s*소비\s*전력|"
+    r"efficacit[eé]|consommation\s*(d.)?[eé]nergie|"
+    r"eficiencia\s*energ[eé]tica|energieeffizienz",
+    re.I,
+)
+# 배지·설명 문장에서 "Energy Star 인증" 같은 표현을 찾을 때 씁니다.
+_ENERGY_STAR = re.compile(r"energy\s*star\b", re.I)
+# "220 kWh/yr" 처럼 숫자+kWh 표현.
+_ENERGY_KWH = re.compile(r"\d[\d,.]*\s*kwh\s*(?:/|per\s*)?\s*(?:yr|year|annum)?", re.I)
+# "Energy Class A+++", "Efficiency Class A" 처럼 명시적인 유럽식 등급만 봅니다
+# ("A" 한 글자만으로는 오탐이 너무 많아서 "energy/efficiency class" 가 붙은 경우만 봅니다).
+_ENERGY_EU_CLASS = re.compile(r"(energy|efficiency)\s*class\s*[a-g]\+{0,3}", re.I)
+
+
 
 # ── 가격 글자 → 숫자 ────────────────────────────────────────────────────
 def parse_price(value: Any, default_currency: str = "USD") -> tuple[float | None, str]:
@@ -195,6 +215,33 @@ def _model_from_url(url: str) -> str:
     return ""
 
 
+def _energy_rating(specs: dict[str, str], badge_text: str, description: str, page_text: str = "") -> str:
+    """스펙 표·배지·설명·(있으면) 화면 전체 글자에서 에너지 효율 정보를 찾습니다.
+    못 찾으면 빈 문자열.
+
+    찾는 순서(구체적인 것부터):
+      1) 스펙 표에 "Energy Star", "Annual Energy Use" 같은 항목이 그대로 있으면 그 줄
+      2) 배지·설명·화면 전체 글자에 "Energy Star" 라는 말이 있으면 인증 사실만
+         (스펙 표가 표 태그가 아니라 화면에 흩어진 글자로만 있는 사이트가 많아서
+         page_text 까지 넉넉하게 봅니다)
+      3) "220 kWh/yr" 처럼 숫자로 적힌 연간 소비전력
+      4) "Energy Class A+++" 처럼 명시적인 유럽식 등급
+    """
+    for key, val in specs.items():
+        if _ENERGY_SPEC_KEY.search(key):
+            return f"{key}: {val}" if val else key
+    text = f"{badge_text} {description} {page_text}"
+    if _ENERGY_STAR.search(text):
+        return "Energy Star Certified"
+    match = _ENERGY_KWH.search(text)
+    if match:
+        return re.sub(r"\s+", " ", match.group(0)).strip()
+    match = _ENERGY_EU_CLASS.search(text)
+    if match:
+        return re.sub(r"\s+", " ", match.group(0)).strip()
+    return ""
+
+
 # ── 한 페이지 전체 ─────────────────────────────────────────────────────
 def extract_product(html: str, url: str, default_currency: str = "USD") -> dict | None:
     """제품 페이지면 정리한 dict, 제품 페이지가 아니면 None."""
@@ -245,6 +292,12 @@ def extract_product(html: str, url: str, default_currency: str = "USD") -> dict 
     badge_text = " ".join(
         n.get_text(" ", strip=True) for n in soup.select("[class*=badge], [class*=flag], [class*=label]")
     )
+    # 스펙 표가 <table> 이 아니라 화면에 흩어진 글자로만 있는 사이트가 많아서
+    # (예: Whirlpool 의 Energy Star 인증 문구), 전체 글자에서도 한 번 더 찾습니다.
+    # 앞쪽 3만 자만 보는 이유는 페이지 아래쪽 관련 상품·리뷰 더미까지 다 뒤지면
+    # 느려지기만 하고, 에너지 정보는 거의 항상 스펙·설명 영역(앞쪽)에 있어서입니다.
+    page_text = soup.get_text(" ", strip=True)[:30000]
+    energy_rating = _energy_rating(specs, badge_text, description, page_text)
     return {
         "url": url,
         "name": name[:200],
@@ -258,4 +311,5 @@ def extract_product(html: str, url: str, default_currency: str = "USD") -> dict 
         "description": description[:600],
         "features": features,
         "specs": specs,
+        "energy_rating": energy_rating,
     }
