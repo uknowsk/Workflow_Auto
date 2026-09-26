@@ -1,4 +1,4 @@
-"""가전 신제품 조사 앱 - 대륙별 탑 5 가전사의 품목별 신제품을 찾아 가격대별로 정리합니다.
+"""가전 신제품 조사 앱 - 글로벌 탑 20 가전사의 품목별 신제품을 찾아 가격대별로 정리합니다.
 
 한 프로세스가 두 가지를 같이 띄웁니다.
   /mcp   - 오케스트레이터가 부르는 MCP 주소 ("북미 조리기기 신제품 조사해줘")
@@ -22,8 +22,10 @@ from . import service
 mcp = FastMCP(
     "가전 신제품 조사",
     instructions=(
-        "대륙별 탑 5 가전사의 품목별 신제품을 공식 홈페이지에서 찾아 가격, POD(차별점), "
-        "제품 스펙을 정리하고 가격대별로 비교합니다."
+        "영향력 기준 글로벌 탑 20 가전사의 품목별 신제품을 공식 홈페이지에서 찾아 가격, "
+        "POD(차별점), 에너지 효율, AI 기능, 제품 스펙을 정리하고 가격대별로 비교합니다. "
+        "대륙(region)은 홈페이지·통화를 고르는 용도일 뿐, 대륙 매출 순위로 브랜드를 "
+        "거르지 않습니다 — 특정 대륙 5위 밖이어도 영향력이 크면 조사 대상입니다."
     ),
     host=os.getenv("HOST", "0.0.0.0"),
     port=int(os.getenv("PORT", "9119")),
@@ -51,20 +53,22 @@ def _brief(product: dict) -> dict:
 # ── MCP 기능 (오케스트레이터용) ────────────────────────────────────────
 @mcp.tool()
 def list_catalog() -> dict:
-    """조사할 수 있는 대륙, 대륙별 탑 5 제조사, 품목, 품목별 가격대 구간을 보여 줍니다."""
+    """조사할 수 있는 대륙, 글로벌 탑 20 제조사(대륙별 홈페이지), 품목, 품목별 가격대 구간을 보여 줍니다."""
     return service.catalog_view()
 
 
 @mcp.tool()
 def scan_new_products(region: str, category: str, makers: str = "", max_per_maker: int = 0) -> dict:
-    """대륙과 품목을 골라 탑 5 제조사 홈페이지에서 신제품을 찾아 가격·POD·스펙을 정리해 저장합니다.
+    """대륙과 품목을 골라 글로벌 탑 20 제조사 홈페이지에서 신제품을 찾아
+    가격·POD·에너지효율·AI기능·스펙을 정리해 저장합니다.
 
     Args:
-        region: 대륙. north_america(북아메리카), europe(유럽), asia(아시아),
+        region: 대륙. 홈페이지·통화를 고르는 용도일 뿐 브랜드를 거르지 않습니다.
+            north_america(북아메리카), europe(유럽), asia(아시아),
             south_america(남아메리카), oceania(오세아니아)
         category: 품목. cooking(조리기기), refrigerator(냉장고), laundry(세탁기·건조기),
             dishwasher(식기세척기), air(에어컨·공기청정), vacuum(청소기)
-        makers: 일부 회사만 볼 때 쉼표로. 예) "GE Appliances,Whirlpool". 비우면 탑 5 전부
+        makers: 일부 회사만 볼 때 쉼표로. 예) "GE Appliances,Whirlpool". 비우면 탑 20 전부
         max_per_maker: 회사당 최대 제품 수. 0 이면 기본값(8)
     """
     names = [m.strip() for m in makers.split(",") if m.strip()]
@@ -113,7 +117,7 @@ def add_source(maker: str, region: str, category: str, url: str) -> dict:
 
 @mcp.tool()
 def set_region_makers(region: str, makers: str) -> dict:
-    """대륙별 탑 5 제조사를 바꿉니다.
+    """이 대륙에서 살펴볼 제조사 목록을 통째로 바꿉니다(글로벌 탑 20 기본값 대신 씁니다).
 
     Args:
         region: 대륙

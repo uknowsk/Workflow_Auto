@@ -25,12 +25,12 @@ store = Store("appliance_watch")
 _scan_lock = threading.Lock()
 
 
-# ── 대륙별 탑 5 ─────────────────────────────────────────────────────────
+# ── 이 대륙에서 살펴볼 회사(기본값: 글로벌 탑 20 전부) ────────────────────
 def region_makers(region: str) -> list[dict]:
     saved = store.list("region_makers", region=region)
     if saved:
         return saved[-1]["makers"]
-    return [dict(m) for m in catalog.DEFAULT_MAKERS.get(region, [])]
+    return catalog.default_region_makers(region)
 
 
 def set_region_makers(region: str, makers: list[dict]) -> list[dict]:
@@ -49,6 +49,7 @@ def set_region_makers(region: str, makers: list[dict]) -> list[dict]:
 
 def catalog_view() -> dict:
     return {
+        "global_brands": catalog.global_brands(),  # 영향력 기준 탑 20 (참고용, tier 포함)
         "regions": [
             {"key": key, **info, "makers": region_makers(key)} for key, info in catalog.REGIONS.items()
         ],

@@ -1,11 +1,19 @@
-"""대륙별 가전 제조사, 품목, 가격대 기준표.
+"""가전 제조사(글로벌 탑 20), 품목, 가격대 기준표.
 
-여기 있는 값은 "처음 켰을 때의 기본값"입니다. 제조사 순위는 해마다 바뀌므로
-화면(또는 set_region_makers 기능)에서 대륙별 탑 5를 고쳐 쓸 수 있고,
-고친 값은 저장소에 남아 이 기본값보다 먼저 쓰입니다.
+**대륙별 탑 5 → 글로벌 탑 20 으로 바꿨습니다.** 대륙 매출 순위로만 고르면
+보쉬·미얼레·KitchenAid 처럼 특정 대륙 판매 5위 안에는 못 들어도 전 세계
+적으로 영향력이 큰 브랜드가 조사 대상에서 통째로 빠지는 문제가 있었습니다.
+그래서 이제는 "영향력 기준 글로벌 20개 브랜드" 하나의 순위표(GLOBAL_BRANDS)를
+모든 대륙이 같이 쓰고, 대륙(REGIONS)은 그 브랜드를 "어느 홈페이지로 볼지"와
+"어느 통화로 비교할지"를 고르는 용도로만 씁니다.
+
+여기 있는 값은 "처음 켰을 때의 기본값"입니다. 화면(또는 set_region_makers
+기능)에서 고쳐 쓸 수 있고, 고친 값은 저장소에 남아 이 기본값보다 먼저 쓰입니다.
 
 site 는 "이 대륙에서 그 회사 제품이 올라오는 공식 홈페이지 시작 주소"입니다.
-틀렸거나 비어 있어도 괜찮습니다. 검색 API 를 붙여 두면 앱이 스스로 찾아 채웁니다.
+틀렸거나 비어 있어도 괜찮습니다. 화면에서 직접 채우거나, 검색 API 를 붙여
+두면 앱이 스스로 찾아 채웁니다. (주의: 여기 적힌 주소는 사람이 알고 있는
+정보로 채운 것이라 실제로 켜기 전에 한 번씩 확인하는 게 좋습니다.)
 """
 from __future__ import annotations
 
@@ -22,45 +30,111 @@ REGIONS: dict[str, dict] = {
     "oceania": {"label": "오세아니아", "currency": "AUD"},
 }
 
-# ── 대륙별 탑 5 (기본값) ──────────────────────────────────────────────────
-# 판매 점유율 기준의 대략적인 순서입니다. 회사 기준이 따로 있으면 화면에서 바꾸세요.
-DEFAULT_MAKERS: dict[str, list[dict]] = {
-    "north_america": [
-        {"name": "Whirlpool", "site": "https://www.whirlpool.com"},
-        {"name": "GE Appliances", "site": "https://www.geappliances.com"},
-        {"name": "Samsung", "site": "https://www.samsung.com/us"},
-        {"name": "LG", "site": "https://www.lg.com/us"},
-        {"name": "Frigidaire (Electrolux)", "site": "https://www.frigidaire.com"},
-    ],
-    "europe": [
-        {"name": "Bosch (BSH)", "site": "https://www.bosch-home.co.uk"},
-        {"name": "Electrolux", "site": "https://www.electrolux.co.uk"},
-        {"name": "Beko (Arçelik)", "site": "https://www.beko.co.uk"},
-        {"name": "Miele", "site": "https://www.miele.co.uk"},
-        {"name": "Samsung", "site": "https://www.samsung.com/uk"},
-    ],
-    "asia": [
-        {"name": "Haier", "site": "https://www.haier.com"},
-        {"name": "Midea", "site": "https://www.midea.com"},
-        {"name": "Samsung", "site": "https://www.samsung.com/sec"},
-        {"name": "LG", "site": "https://www.lge.co.kr"},
-        {"name": "Panasonic", "site": "https://panasonic.jp"},
-    ],
-    "south_america": [
-        {"name": "Brastemp (Whirlpool)", "site": "https://www.brastemp.com.br"},
-        {"name": "Electrolux", "site": "https://www.electrolux.com.br"},
-        {"name": "Samsung", "site": "https://www.samsung.com/br"},
-        {"name": "LG", "site": "https://www.lg.com/br"},
-        {"name": "Mabe", "site": "https://www.mabe.com.mx"},
-    ],
-    "oceania": [
-        {"name": "Fisher & Paykel", "site": "https://www.fisherpaykel.com/au"},
-        {"name": "Westinghouse (Electrolux)", "site": "https://www.westinghouse.com.au"},
-        {"name": "Samsung", "site": "https://www.samsung.com/au"},
-        {"name": "LG", "site": "https://www.lg.com/au"},
-        {"name": "Bosch", "site": "https://www.bosch-home.com.au"},
-    ],
+# ── 글로벌 탑 20 (영향력 기준, 기본값) ────────────────────────────────────
+# 판매량·인지도·프리미엄 시장 영향력을 종합한 대략적인 순위입니다.
+# tier 는 화면에 참고로 보여주는 분류일 뿐, 조사 여부에는 영향을 주지 않습니다.
+#   글로벌 톱티어 = 여러 대륙에서 상위권 판매
+#   프리미엄      = 판매량은 적어도 트렌드·스펙을 선도하는 고급 브랜드
+#   지역 강세     = 특정 대륙에서 특히 강한 브랜드(대개 글로벌 브랜드의 지역 라인)
+GLOBAL_BRANDS: list[dict] = [
+    {"name": "Samsung", "tier": "글로벌 톱티어"},
+    {"name": "LG", "tier": "글로벌 톱티어"},
+    {"name": "Whirlpool", "tier": "글로벌 톱티어"},
+    {"name": "GE Appliances", "tier": "글로벌 톱티어"},
+    {"name": "Bosch (BSH)", "tier": "글로벌 톱티어"},
+    {"name": "Electrolux", "tier": "글로벌 톱티어"},
+    {"name": "Haier", "tier": "글로벌 톱티어"},
+    {"name": "Midea", "tier": "글로벌 톱티어"},
+    {"name": "Panasonic", "tier": "글로벌 톱티어"},
+    {"name": "Hisense", "tier": "글로벌 톱티어"},
+    {"name": "Miele", "tier": "프리미엄"},
+    {"name": "KitchenAid", "tier": "프리미엄"},
+    {"name": "AEG", "tier": "프리미엄"},
+    {"name": "Viking", "tier": "프리미엄"},
+    {"name": "Sub-Zero / Wolf", "tier": "프리미엄"},
+    {"name": "Thermador (BSH)", "tier": "프리미엄"},
+    {"name": "Fisher & Paykel (Haier)", "tier": "프리미엄"},
+    {"name": "Frigidaire (Electrolux)", "tier": "지역 강세"},
+    {"name": "Beko (Arçelik)", "tier": "지역 강세"},
+    {"name": "Gorenje (Hisense)", "tier": "지역 강세"},
+]
+
+# ── 브랜드 × 대륙 → 공식 홈페이지 ─────────────────────────────────────────
+# 비어 있으면(또는 그 대륙 키가 아예 없으면) 화면에서 채우거나 검색 API 가
+# 스스로 찾습니다. 그동안은 "홈페이지를 모릅니다" 로 조용히 넘어가고 나머지
+# 19개 브랜드는 그대로 조사됩니다 — 하나가 비어 있다고 전체가 막히지 않습니다.
+BRAND_SITES: dict[str, dict[str, str]] = {
+    "Samsung": {
+        "north_america": "https://www.samsung.com/us",
+        "europe": "https://www.samsung.com/uk",
+        "asia": "https://www.samsung.com/sec",
+        "south_america": "https://www.samsung.com/br",
+        "oceania": "https://www.samsung.com/au",
+    },
+    "LG": {
+        "north_america": "https://www.lg.com/us",
+        "europe": "https://www.lg.com/uk",
+        "asia": "https://www.lge.co.kr",
+        "south_america": "https://www.lg.com/br",
+        "oceania": "https://www.lg.com/au",
+    },
+    "Whirlpool": {"north_america": "https://www.whirlpool.com"},
+    "GE Appliances": {"north_america": "https://www.geappliances.com"},
+    "Bosch (BSH)": {
+        "north_america": "https://www.bosch-home.com/us",
+        "europe": "https://www.bosch-home.co.uk",
+        "oceania": "https://www.bosch-home.com.au",
+    },
+    "Electrolux": {
+        "europe": "https://www.electrolux.co.uk",
+        "south_america": "https://www.electrolux.com.br",
+    },
+    "Haier": {"asia": "https://www.haier.com"},
+    "Midea": {"asia": "https://www.midea.com"},
+    "Panasonic": {
+        "asia": "https://panasonic.jp",
+        "europe": "https://www.panasonic.com/uk/consumer.html",
+    },
+    "Hisense": {"north_america": "https://www.hisense-usa.com"},
+    "Miele": {
+        "north_america": "https://www.mieleusa.com",
+        "europe": "https://www.miele.co.uk",
+    },
+    "KitchenAid": {
+        "north_america": "https://www.kitchenaid.com",
+        "europe": "https://www.kitchenaid.co.uk",
+    },
+    "AEG": {"europe": "https://www.aeg.co.uk"},
+    "Viking": {"north_america": "https://www.vikingrange.com"},
+    "Sub-Zero / Wolf": {"north_america": "https://www.subzero-wolf.com"},
+    "Thermador (BSH)": {"north_america": "https://www.thermador.com"},
+    "Fisher & Paykel (Haier)": {
+        "oceania": "https://www.fisherpaykel.com/au",
+        "north_america": "https://www.fisherpaykel.com/us",
+    },
+    "Frigidaire (Electrolux)": {"north_america": "https://www.frigidaire.com"},
+    "Beko (Arçelik)": {"europe": "https://www.beko.co.uk"},
+    "Gorenje (Hisense)": {"europe": "https://www.gorenje.com"},
 }
+
+
+def global_brands() -> list[dict]:
+    """영향력 기준 글로벌 20개 브랜드 순위표(이름 + tier)."""
+    return [dict(b) for b in GLOBAL_BRANDS]
+
+
+def brand_site(name: str, region: str) -> str:
+    return BRAND_SITES.get(name, {}).get(region, "")
+
+
+def default_region_makers(region: str) -> list[dict]:
+    """이 대륙에서 기본으로 살펴볼 회사 목록 — 글로벌 20개 브랜드 전부입니다.
+
+    이 대륙에 홈페이지 주소를 아는 브랜드는 그 주소로, 모르는 브랜드는 주소
+    없이 올려 둡니다(화면에서 채우거나 검색 API 가 찾을 수 있게). "그 대륙
+    판매 5위 안에 든 회사만" 이 아니라 20개 전부를 후보로 두는 게 핵심입니다.
+    """
+    return [{"name": b["name"], "site": brand_site(b["name"], region)} for b in GLOBAL_BRANDS]
 
 # ── 품목 ────────────────────────────────────────────────────────────────
 # keywords 는 주소(URL)나 링크 글자에 이 말이 들어 있으면 그 품목으로 봅니다.

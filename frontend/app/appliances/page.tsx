@@ -145,6 +145,8 @@ export default function Appliances() {
   const regionInfo = catalog?.regions.find((r) => r.key === region);
   const regionMakers = regionInfo?.makers ?? [];
   const categoryLabel = catalog?.categories.find((c) => c.key === category)?.label ?? category;
+  // 이름 → tier("글로벌 톱티어" 등) 조회. 대륙은 홈페이지만 고를 뿐, 이 순위는 대륙과 무관합니다.
+  const tierOf = (name: string) => catalog?.global_brands.find((b) => b.name === name)?.tier ?? "";
 
   useEffect(() => {
     applianceApi
@@ -157,9 +159,12 @@ export default function Appliances() {
       );
   }, []);
 
-  // 대륙을 바꾸면 그 대륙의 탑 5를 전부 고른 상태로 시작합니다.
+  // 대륙을 바꾸면 그 대륙에서 살펴볼 후보(글로벌 탑 20) 중 "글로벌 톱티어"만
+  // 먼저 고른 상태로 시작합니다. 20개를 한꺼번에 돌리면 한 번에 몇 분씩
+  // 걸릴 수 있어서, 나머지(프리미엄·지역 강세)는 필요할 때 칩을 눌러 더합니다.
   useEffect(() => {
-    setMakers(regionMakers.map((m) => m.name));
+    const topTier = regionMakers.filter((m) => tierOf(m.name) === "글로벌 톱티어");
+    setMakers((topTier.length ? topTier : regionMakers).map((m) => m.name));
     setSourceMaker(regionMakers[0]?.name ?? "");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [region, catalog]);
@@ -246,7 +251,7 @@ export default function Appliances() {
     <>
       <PageTitle
         title="가전 신제품 조사"
-        sub="대륙별 탑 5 가전사 홈페이지에서 신제품을 찾아 가격 · POD(차별점) · 스펙을 정리하고 가격대별로 비교합니다"
+        sub="영향력 기준 글로벌 탑 20 가전사 홈페이지에서 신제품을 찾아 가격 · POD(차별점) · 스펙을 정리하고 가격대별로 비교합니다"
       />
 
       {error && (
@@ -286,14 +291,26 @@ export default function Appliances() {
           </Field>
         </Grid>
 
-        <Field label={`${regionInfo?.label ?? ""} 탑 5 제조사`} hint="누르면 빼고 넣을 수 있어요">
-          <Row>
-            {regionMakers.map((m) => (
-              <Chip key={m.name} active={makers.includes(m.name)} onClick={() => toggleMaker(m.name)}>
-                {m.name}
-              </Chip>
-            ))}
-          </Row>
+        <Field
+          label={`${regionInfo?.label ?? ""} 조사 대상 (글로벌 탑 20)`}
+          hint="누르면 빼고 넣을 수 있어요 · 대륙은 홈페이지·통화만 바꿀 뿐 순위를 거르지 않아요"
+        >
+          {["글로벌 톱티어", "프리미엄", "지역 강세"].map((tier) => {
+            const group = regionMakers.filter((m) => tierOf(m.name) === tier);
+            if (!group.length) return null;
+            return (
+              <div key={tier} style={{ marginBottom: "var(--space-2)" }}>
+                <Muted>{tier}</Muted>
+                <Row>
+                  {group.map((m) => (
+                    <Chip key={m.name} active={makers.includes(m.name)} onClick={() => toggleMaker(m.name)}>
+                      {m.name}
+                    </Chip>
+                  ))}
+                </Row>
+              </div>
+            );
+          })}
         </Field>
 
         <Row between>
@@ -546,7 +563,7 @@ export default function Appliances() {
                     <Badge>{EVERY.find((e) => e.hours === w.every_hours)?.label ?? `${w.every_hours}시간마다`}</Badge>
                   </Row>
                   <Muted>
-                    {w.makers.length ? w.makers.join(", ") : "탑 5 전부"} · 마지막 확인{" "}
+                    {w.makers.length ? w.makers.join(", ") : "글로벌 탑 20 전부"} · 마지막 확인{" "}
                     {w.last_run ? w.last_run.slice(0, 16).replace("T", " ") : "아직"}
                     {w.last_result && ` · ${w.last_result}`}
                   </Muted>

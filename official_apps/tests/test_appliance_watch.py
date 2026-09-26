@@ -136,6 +136,26 @@ def fake_web(monkeypatch):
     web.reset()
 
 
+# ── 글로벌 탑 20 (대륙별 탑 5 대신) ───────────────────────────────────────
+def test_글로벌_탑_20이_기본값이고_대륙_순위로_거르지_않는다():
+    brands = catalog.global_brands()
+    assert len(brands) == 20
+    assert all("name" in b and "tier" in b for b in brands)
+    names = {b["name"] for b in brands}
+    # 북미 판매 순위엔 안 들어도 영향력 큰 프리미엄 브랜드가 빠지면 안 됩니다.
+    assert {"Miele", "KitchenAid", "Bosch (BSH)"} <= names
+
+    for region in catalog.REGIONS:
+        makers = catalog.default_region_makers(region)
+        assert len(makers) == 20  # 대륙마다 5개로 자르지 않고 20개 전부를 후보로 둡니다.
+        assert {m["name"] for m in makers} == names
+
+
+def test_모르는_홈페이지는_빈_문자열이지_에러가_아니다():
+    assert catalog.brand_site("Viking", "asia") == ""
+    assert catalog.brand_site("없는브랜드", "north_america") == ""
+
+
 # ── 작은 부품 ──────────────────────────────────────────────────────────
 def test_가격_글자를_나라별_모양대로_읽는다():
     assert extract.parse_price("$1,299.99") == (1299.99, "USD")

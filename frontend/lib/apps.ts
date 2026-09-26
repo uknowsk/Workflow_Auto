@@ -101,8 +101,11 @@ export const tasksApi = {
 
 // ── 가전 신제품 조사 ────────────────────────────────────────────────────
 export type Maker = { name: string; site: string };
+export type GlobalBrand = { name: string; tier: string };
 
 export type ApplianceCatalog = {
+  // 영향력 기준 글로벌 탑 20 (대륙별 탑 5 아님 — 대륙은 홈페이지·통화 선택용).
+  global_brands: GlobalBrand[];
   regions: { key: string; label: string; currency: string; makers: Maker[] }[];
   categories: {
     key: string;
