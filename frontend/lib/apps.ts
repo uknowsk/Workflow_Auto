@@ -137,11 +137,48 @@ export type Product = {
   ai_features: string[];
   ai_method: "llm" | "rule";
   energy_rating: string;
+  rating_value: number | null;
+  rating_scale: number | null;
+  review_source: string | null;
+  review_score: number | null;
   specs: Record<string, string>;
   features: string[];
   first_seen: string;
   last_seen: string;
   found_via: string;
+};
+
+// ── BM(벤치마크) 비교: 우위·동등·열세 ─────────────────────────────────────
+export type BmVerdict = "우위" | "동등" | "열세" | "비교불가";
+export type BmAxis = "price_usd" | "pod_count" | "rating" | "energy" | "ai_count";
+export type BmAxisResult = { label: string; target: number | null; peer: number | null; verdict: BmVerdict };
+export type BmPeerRow = {
+  maker: string;
+  name: string;
+  model: string;
+  price_usd: number | null;
+  url: string;
+  axes: Record<BmAxis, BmAxisResult>;
+};
+export type Benchmark = {
+  ok: boolean;
+  error?: string;
+  target: {
+    maker: string;
+    name: string;
+    model: string;
+    band: string;
+    price_usd: number | null;
+    url: string;
+    rating_value: number | null;
+    review_source: string | null;
+    review_score: number | null;
+  };
+  peer_count: number;
+  rows: BmPeerRow[];
+  axis_tally: Record<BmAxis, Record<string, number>>;
+  strengths: string[];
+  weaknesses: string[];
 };
 
 export type PriceBand = {
@@ -240,4 +277,11 @@ export const applianceApi = {
     call<ScanResult>(APPLIANCE_API, `/api/watches/${id}/run`, { method: "POST" }),
   deleteWatch: (id: string) =>
     call<{ ok: boolean }>(APPLIANCE_API, `/api/watches/${id}`, { method: "DELETE" }),
+  benchmark: (url: string) =>
+    call<Benchmark>(APPLIANCE_API, `/api/benchmark?url=${encodeURIComponent(url)}`),
+  setReviewScore: (url: string, source: string, score: number, scale: number) =>
+    call<{ ok: boolean; error?: string; product?: Product }>(APPLIANCE_API, "/api/review-score", {
+      method: "POST",
+      body: JSON.stringify({ url, source, score, scale }),
+    }),
 };

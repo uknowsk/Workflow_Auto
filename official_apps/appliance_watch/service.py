@@ -192,6 +192,28 @@ def _upsert_product(data: dict) -> tuple[dict, bool]:
     return store.put("product", {**data, "first_seen": now_iso()[:10]}), False
 
 
+def set_review_score(url: str, source: str, score: float, scale: float = 5.0) -> dict:
+    """Consumer Reports 같은 제3자 평가 점수를 사람이 직접 붙입니다.
+
+    그런 곳은 구독이 있어야 점수가 보이는 경우가 많아서, 이 앱이 대신
+    긁어오지 않습니다(가져올 수 있어도 재배포 약관 문제가 남습니다). 갖고
+    계신 점수를 여기로 넣어 주시면 benchmark() 비교에서 페이지 자체 평점보다
+    우선해서 씁니다.
+    """
+    products = store.list("product", url=url)
+    if not products:
+        raise ValueError("먼저 «신제품 찾기»로 이 제품을 찾아 저장해야 점수를 붙일 수 있습니다.")
+    source = str(source).strip()
+    if not source:
+        raise ValueError("평가한 곳 이름(예: Consumer Reports)을 입력하세요.")
+    try:
+        score = float(score)
+        scale = float(scale) or 5.0
+    except (TypeError, ValueError):
+        raise ValueError("점수는 숫자로 입력하세요.")
+    return store.update(products[0]["id"], review_source=source, review_score=score, review_scale=scale)
+
+
 def _scan_maker(maker: dict, region: str, category: str, limit: int, log: list[str]) -> list[dict]:
     currency = catalog.REGIONS[region]["currency"]
     known = list_sources(region, category, maker["name"])
@@ -374,6 +396,121 @@ def compare(
         "bands": bands,
         "unpriced": unpriced,
         "spec_keys": spec_keys,
+    }
+
+
+# ── BM(벤치마크) 비교: 우위·동등·열세 ─────────────────────────────────────
+# 축마다 "낮을수록 유리"만 따로 표시하고, 나머지는 "높을수록 유리"로 봅니다.
+_BM_AXES = ["price_usd", "pod_count", "rating", "energy", "ai_count"]
+_BM_LABEL = {
+    "price_usd": "가격",
+    "pod_count": "POD(차별점) 개수",
+    "rating": "평가 점수(5점 만점 환산)",
+    "energy": "에너지 인증",
+    "ai_count": "AI·연결 기능 개수",
+}
+_BM_LOWER_IS_BETTER = {"price_usd"}
+_BM_TOLERANCE = 0.08  # 이 비율 안의 차이는 "동등" 으로 봅니다(오차·측정 방식 차이 감안)
+
+
+def _bm_axis_value(product: dict, axis: str) -> float | None:
+    if axis == "price_usd":
+        return product.get("price_usd")
+    if axis == "pod_count":
+        return float(len(product.get("pods") or []))
+    if axis == "rating":
+        # 사람이 직접 넣은 제3자 점수(예: Consumer Reports)가 있으면 그걸 우선하고,
+        # 없으면 제품 페이지 자체의 고객 평점을 5점 만점으로 환산해 씁니다.
+        if product.get("review_score") is not None:
+            scale = product.get("review_scale") or 5.0
+            return product["review_score"] / scale * 5
+        if product.get("rating_value") is not None:
+            scale = product.get("rating_scale") or 5.0
+            return product["rating_value"] / scale * 5
+        return None
+    if axis == "energy":
+        return 1.0 if product.get("energy_rating") else 0.0
+    if axis == "ai_count":
+        return float(len(product.get("ai_features") or []))
+    return None
+
+
+def _bm_verdict(target_value: float | None, peer_value: float | None, axis: str) -> str:
+    """target 이 peer 보다 우위/동등/열세인지. 둘 중 하나라도 없으면 "비교불가"."""
+    if target_value is None or peer_value is None:
+        return "비교불가"
+    if target_value == peer_value == 0:
+        return "동등"
+    base = abs(peer_value) if peer_value else abs(target_value) or 1
+    diff = (target_value - peer_value) / base
+    if axis in _BM_LOWER_IS_BETTER:
+        diff = -diff
+    if abs(diff) <= _BM_TOLERANCE:
+        return "동등"
+    return "우위" if diff > 0 else "열세"
+
+
+def benchmark(url: str) -> dict:
+    """이 제품(BM 대상)을 같은 가격대의 다른 제품들과 견줍니다.
+
+    가격·POD 개수·평가 점수·에너지 인증·AI 기능 개수, 다섯 축마다 경쟁 제품
+    하나하나와 우위/동등/열세를 매기고, 우위가 많은 축을 강점(strengths)으로,
+    열세가 많은 축을 약점(weaknesses)으로 정리합니다(SWOT 중 내부 요인 두 축 —
+    기회·위협은 시장 전망 같은 이 앱 바깥의 판단이 필요해 다루지 않습니다).
+    """
+    targets = store.list("product", url=url)
+    if not targets:
+        raise ValueError("먼저 «신제품 찾기»로 이 제품을 찾아 저장해야 견줄 수 있습니다.")
+    target = targets[0]
+    peers = [
+        p
+        for p in store.list(
+            "product", region=target["region"], category=target["category"], band=target["band"]
+        )
+        if p["url"] != url
+    ]
+
+    rows = []
+    tally = {axis: Counter() for axis in _BM_AXES}
+    for peer in peers:
+        axes = {}
+        for axis in _BM_AXES:
+            tv, pv = _bm_axis_value(target, axis), _bm_axis_value(peer, axis)
+            verdict = _bm_verdict(tv, pv, axis)
+            axes[axis] = {"label": _BM_LABEL[axis], "target": tv, "peer": pv, "verdict": verdict}
+            tally[axis][verdict] += 1
+        rows.append(
+            {
+                "maker": peer.get("maker"),
+                "name": peer.get("name"),
+                "model": peer.get("model"),
+                "price_usd": peer.get("price_usd"),
+                "url": peer["url"],
+                "axes": axes,
+            }
+        )
+
+    strengths = [_BM_LABEL[a] for a in _BM_AXES if tally[a]["우위"] > tally[a]["열세"] and tally[a]["우위"] > 0]
+    weaknesses = [_BM_LABEL[a] for a in _BM_AXES if tally[a]["열세"] > tally[a]["우위"] and tally[a]["열세"] > 0]
+
+    return {
+        "ok": True,
+        "target": {
+            "maker": target.get("maker"),
+            "name": target.get("name"),
+            "model": target.get("model"),
+            "band": target.get("band"),
+            "price_usd": target.get("price_usd"),
+            "url": target["url"],
+            "rating_value": target.get("rating_value"),
+            "review_source": target.get("review_source"),
+            "review_score": target.get("review_score"),
+        },
+        "peer_count": len(rows),
+        "rows": rows,
+        "axis_tally": {axis: dict(counts) for axis, counts in tally.items()},
+        "strengths": strengths,
+        "weaknesses": weaknesses,
     }
 
 

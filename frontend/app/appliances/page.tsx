@@ -10,6 +10,8 @@ import { useEffect, useMemo, useState } from "react";
 import {
   APPLIANCE_API,
   ApplianceCatalog,
+  Benchmark,
+  BmAxis,
   Comparison,
   Product,
   Source,
@@ -27,6 +29,7 @@ import {
   Field,
   Grid,
   Input,
+  Modal,
   Muted,
   PageTitle,
   Pre,
@@ -37,7 +40,17 @@ import {
   Table,
   Tabs,
   Tag,
+  Tone,
 } from "@/components/ui";
+
+const BM_AXES: BmAxis[] = ["price_usd", "pod_count", "rating", "energy", "ai_count"];
+
+function verdictTone(v: string): Tone {
+  if (v === "우위") return "ok";
+  if (v === "열세") return "crit";
+  if (v === "동등") return "neutral";
+  return "warn";
+}
 
 type View = "compare" | "sources" | "watches";
 
@@ -76,10 +89,12 @@ function ProductCard({
   product,
   picked,
   onPick,
+  onBenchmark,
 }: {
   product: Product;
   picked: boolean;
   onPick: () => void;
+  onBenchmark: () => void;
 }) {
   return (
     <Card style={{ marginBottom: "var(--space-3)" }}>
@@ -129,9 +144,12 @@ function ProductCard({
         </div>
       )}
       {product.new_reason && <Muted style={{ marginTop: "var(--space-2)" }}>{product.new_reason}</Muted>}
-      <div style={{ marginTop: "var(--space-2)" }}>
+      <Row between style={{ marginTop: "var(--space-2)" }}>
         <Checkbox label="스펙 비교에 담기" checked={picked} onChange={onPick} />
-      </div>
+        <Button small variant="ghost" onClick={onBenchmark}>
+          🎯 같은 가격대와 견주기(BM)
+        </Button>
+      </Row>
     </Card>
   );
 }
@@ -160,6 +178,12 @@ export default function Appliances() {
   const [brandUrl, setBrandUrl] = useState("");
   const [brandAllRegions, setBrandAllRegions] = useState(true);
   const [brandBusy, setBrandBusy] = useState(false);
+  const [bmUrl, setBmUrl] = useState<string | null>(null);
+  const [bm, setBm] = useState<Benchmark | null>(null);
+  const [bmError, setBmError] = useState("");
+  const [rvSource, setRvSource] = useState("");
+  const [rvScore, setRvScore] = useState("");
+  const [rvScale, setRvScale] = useState("5");
 
   const regionInfo = catalog?.regions.find((r) => r.key === region);
   const regionMakers = regionInfo?.makers ?? [];
@@ -271,6 +295,37 @@ export default function Appliances() {
       setError(String(e));
     } finally {
       setBrandBusy(false);
+    }
+  };
+
+  const openBenchmark = async (url: string) => {
+    setBmUrl(url);
+    setBm(null);
+    setBmError("");
+    setRvSource(""); setRvScore(""); setRvScale("5");
+    try {
+      const result = await applianceApi.benchmark(url);
+      setBm(result);
+    } catch (e) {
+      setBmError(String(e));
+    }
+  };
+
+  const closeBenchmark = () => {
+    setBmUrl(null);
+    setBm(null);
+    setBmError("");
+  };
+
+  const saveReviewScore = async () => {
+    if (!bmUrl || !rvSource.trim() || !rvScore) return;
+    setBmError("");
+    try {
+      await applianceApi.setReviewScore(bmUrl, rvSource.trim(), Number(rvScore), Number(rvScale) || 5);
+      await openBenchmark(bmUrl);
+      setMessage("평가 점수를 저장했습니다.");
+    } catch (e) {
+      setBmError(String(e));
     }
   };
 
@@ -479,6 +534,7 @@ export default function Appliances() {
                           product={p}
                           picked={picked.includes(p.id)}
                           onPick={() => togglePick(p.id)}
+                          onBenchmark={() => openBenchmark(p.url)}
                         />
                       ))
                     )}
@@ -491,7 +547,13 @@ export default function Appliances() {
                   <SectionHead label={`가격 미확인 ${comparison.unpriced.length}개`} note="홈페이지에 가격이 없는 제품" />
                   <Grid cols={3}>
                     {comparison.unpriced.map((p) => (
-                      <ProductCard key={p.id} product={p} picked={picked.includes(p.id)} onPick={() => togglePick(p.id)} />
+                      <ProductCard
+                        key={p.id}
+                        product={p}
+                        picked={picked.includes(p.id)}
+                        onPick={() => togglePick(p.id)}
+                        onBenchmark={() => openBenchmark(p.url)}
+                      />
                     ))}
                   </Grid>
                 </Section>
@@ -677,6 +739,113 @@ export default function Appliances() {
           )}
         </>
       )}
+
+      <Modal
+        open={bmUrl !== null}
+        onClose={closeBenchmark}
+        title="🎯 BM 비교"
+        sub={
+          bm
+            ? `${bm.target.name || bm.target.model} · ${bm.target.band} 가격대 · 경쟁 제품 ${bm.peer_count}개`
+            : undefined
+        }
+      >
+        {bmError && <Alert tone="crit">{bmError}</Alert>}
+        {!bm && !bmError && <Muted>불러오는 중…</Muted>}
+        {bm && (
+          <>
+            {bm.strengths.length > 0 && (
+              <div style={{ marginBottom: "var(--space-2)" }}>
+                강점:{" "}
+                {bm.strengths.map((s) => (
+                  <Badge key={s} tone="ok" style={{ marginRight: 4 }}>
+                    {s}
+                  </Badge>
+                ))}
+              </div>
+            )}
+            {bm.weaknesses.length > 0 && (
+              <div style={{ marginBottom: "var(--space-2)" }}>
+                약점:{" "}
+                {bm.weaknesses.map((s) => (
+                  <Badge key={s} tone="crit" style={{ marginRight: 4 }}>
+                    {s}
+                  </Badge>
+                ))}
+              </div>
+            )}
+            {!bm.strengths.length && !bm.weaknesses.length && <Muted>뚜렷한 강점·약점 없이 팽팽합니다.</Muted>}
+
+            {bm.peer_count === 0 ? (
+              <Muted>같은 대륙·품목·가격대에 견줄 다른 제품이 아직 없습니다.</Muted>
+            ) : (
+              <div style={{ overflowX: "auto", marginTop: "var(--space-3)" }}>
+                <Table>
+                  <thead>
+                    <tr>
+                      <th>경쟁 제품</th>
+                      {BM_AXES.map((a) => (
+                        <th key={a}>{bm.rows[0]?.axes[a]?.label ?? a}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {bm.rows.map((row) => (
+                      <tr key={row.url}>
+                        <td>
+                          <a href={row.url} target="_blank" rel="noreferrer">
+                            {row.maker} {row.name || row.model}
+                          </a>
+                        </td>
+                        {BM_AXES.map((a) => (
+                          <td key={a}>
+                            <Badge tone={verdictTone(row.axes[a].verdict)}>{row.axes[a].verdict}</Badge>
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </Table>
+              </div>
+            )}
+
+            <div style={{ marginTop: "var(--space-3)" }}>
+            <Field
+              label="제3자 평가 점수 넣기"
+              hint="예: Consumer Reports — 구독 벽 뒤 점수라 이 앱이 대신 긁어오지 않고, 직접 입력만 지원합니다"
+            >
+              <Row>
+                <Input
+                  placeholder="평가한 곳 (예: Consumer Reports)"
+                  value={rvSource}
+                  onChange={(e) => setRvSource(e.target.value)}
+                  style={{ width: 200 }}
+                />
+                <Input
+                  type="number"
+                  step="0.1"
+                  placeholder="점수"
+                  value={rvScore}
+                  onChange={(e) => setRvScore(e.target.value)}
+                  style={{ width: 90 }}
+                />
+                <Input
+                  type="number"
+                  step="0.5"
+                  placeholder="만점(기본 5)"
+                  value={rvScale}
+                  onChange={(e) => setRvScale(e.target.value)}
+                  style={{ width: 110 }}
+                />
+                <Button small variant="soft" onClick={saveReviewScore} disabled={!rvSource.trim() || !rvScore}>
+                  저장
+                </Button>
+              </Row>
+            </Field>
+            </div>
+          </>
+        )}
+      </Modal>
     </>
   );
 }

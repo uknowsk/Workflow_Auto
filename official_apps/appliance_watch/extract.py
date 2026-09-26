@@ -242,6 +242,37 @@ def _energy_rating(specs: dict[str, str], badge_text: str, description: str, pag
     return ""
 
 
+def _page_rating(ld: dict) -> dict:
+    """제품 카드(JSON-LD)에 같이 들어 있는 고객 평점(aggregateRating)을 읽습니다.
+
+    Consumer Reports 처럼 구독이 있어야 보이는 제3자 평가는 이 앱이 대신
+    긁어오지 않습니다(구독 벽 뒤 데이터를 가져오는 건 기술 문제가 아니라
+    약관 문제입니다). 대신 제조사 페이지 자체에 이미 공개돼 있는 고객 평점을
+    읽어 오고, 화면/도구에서 "review_score"(사람이 직접 입력한 제3자 점수,
+    예: Consumer Reports)로 덮어쓸 수 있게 열어 뒀습니다(service.set_review_score).
+    """
+    node = ld.get("aggregateRating")
+    if isinstance(node, list):
+        node = node[0] if node else None
+    if not isinstance(node, dict):
+        return {}
+    try:
+        value = float(_text(node.get("ratingValue")))
+    except (TypeError, ValueError):
+        return {}
+    scale = node.get("bestRating")
+    try:
+        scale = float(scale)
+    except (TypeError, ValueError):
+        scale = 5.0
+    count = node.get("reviewCount") or node.get("ratingCount")
+    try:
+        count = int(float(count))
+    except (TypeError, ValueError):
+        count = None
+    return {"rating_value": value, "rating_scale": scale or 5.0, "rating_count": count}
+
+
 # ── 한 페이지 전체 ─────────────────────────────────────────────────────
 def extract_product(html: str, url: str, default_currency: str = "USD") -> dict | None:
     """제품 페이지면 정리한 dict, 제품 페이지가 아니면 None."""
@@ -298,6 +329,7 @@ def extract_product(html: str, url: str, default_currency: str = "USD") -> dict 
     # 느려지기만 하고, 에너지 정보는 거의 항상 스펙·설명 영역(앞쪽)에 있어서입니다.
     page_text = soup.get_text(" ", strip=True)[:30000]
     energy_rating = _energy_rating(specs, badge_text, description, page_text)
+    rating = _page_rating(ld)
     return {
         "url": url,
         "name": name[:200],
@@ -312,4 +344,7 @@ def extract_product(html: str, url: str, default_currency: str = "USD") -> dict 
         "features": features,
         "specs": specs,
         "energy_rating": energy_rating,
+        "rating_value": rating.get("rating_value"),
+        "rating_scale": rating.get("rating_scale"),
+        "rating_count": rating.get("rating_count"),
     }

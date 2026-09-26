@@ -280,6 +280,17 @@ def test_에너지_효율은_배지_설명에서도_찾는다():
     assert extract._energy_rating({"Width": "30 in"}, "New!", "A great range.") == ""
 
 
+def test_제품_카드의_고객_평점을_읽는다():
+    ld = {"aggregateRating": {"@type": "AggregateRating", "ratingValue": "4.6", "reviewCount": "312"}}
+    assert extract._page_rating(ld) == {"rating_value": 4.6, "rating_scale": 5.0, "rating_count": 312}
+    # bestRating 이 따로 있으면(예: 10점 만점) 그대로 씁니다.
+    ld10 = {"aggregateRating": {"ratingValue": "8.5", "bestRating": "10", "ratingCount": "9"}}
+    assert extract._page_rating(ld10) == {"rating_value": 8.5, "rating_scale": 10.0, "rating_count": 9}
+    # 평점이 없거나 깨져 있으면 조용히 빈 딕셔너리입니다.
+    assert extract._page_rating({}) == {}
+    assert extract._page_rating({"aggregateRating": {"ratingValue": "안 숫자"}}) == {}
+
+
 def test_주소_끝_모델명으로도_찾는다():
     assert extract._model_from_url(
         "https://www.whirlpool.com/kitchen/cooking/cooktops/4-burner-elements/"
@@ -548,5 +559,116 @@ def test_같은_모델이_주소_두개로_올라와도_한번만_센다(fake_we
 
     result = service.scan("north_america", "cooking", ["Whirlpool"])
     assert result["product_count"] == 2
+
+
+# ── BM(벤치마크) 비교: 우위·동등·열세 ─────────────────────────────────────
+def _seed_bm_product(url, **extra):
+    base = {
+        "url": url,
+        "region": "north_america",
+        "category": "cooking",
+        "band": "500-1000",
+        "maker": "GE",
+        "name": "Range",
+        "model": "X1",
+        "price_usd": 800.0,
+        "pods": [],
+        "ai_features": [],
+        "energy_rating": "",
+    }
+    base.update(extra)
+    return service.store.put("product", base)
+
+
+def test_평가한_점수가_없으면_먼저_찾아_저장해야_한다는_에러를_낸다(fake_web):
+    with pytest.raises(ValueError):
+        service.set_review_score("https://no-such.example/x", "Consumer Reports", 4.2)
+
+
+def test_이름이나_점수가_이상하면_거절한다(fake_web):
+    _seed_bm_product("https://a.example/1")
+    with pytest.raises(ValueError):
+        service.set_review_score("https://a.example/1", "  ", 4.0)
+    with pytest.raises(ValueError):
+        service.set_review_score("https://a.example/1", "Consumer Reports", "안숫자")
+
+
+def test_점수를_넣으면_저장된_제품에_붙는다(fake_web):
+    _seed_bm_product("https://a.example/1")
+    updated = service.set_review_score("https://a.example/1", "Consumer Reports", 4.2, 5.0)
+    assert updated["review_source"] == "Consumer Reports"
+    assert updated["review_score"] == 4.2
+    assert updated["review_scale"] == 5.0
+
+
+def test_BM_대상도_먼저_찾아_저장해야_견줄_수_있다(fake_web):
+    with pytest.raises(ValueError):
+        service.benchmark("https://no-such.example/x")
+
+
+def test_같은_가격대_제품끼리만_견준다(fake_web):
+    _seed_bm_product("https://a.example/target", price_usd=800.0)
+    _seed_bm_product("https://a.example/same-band", band="500-1000", price_usd=750.0)
+    _seed_bm_product("https://a.example/other-band", band="1000-1500", price_usd=1200.0)
+    _seed_bm_product("https://a.example/other-category", category="refrigerator", price_usd=800.0)
+
+    result = service.benchmark("https://a.example/target")
+    peer_urls = {row["url"] for row in result["rows"]}
+    assert peer_urls == {"https://a.example/same-band"}
+
+
+def test_가격이_싸고_POD가_많으면_그_축은_우위다(fake_web):
+    _seed_bm_product("https://a.example/target", price_usd=800.0, pods=["a", "b", "c"])
+    _seed_bm_product("https://a.example/peer", price_usd=1000.0, pods=["a"])
+
+    result = service.benchmark("https://a.example/target")
+    axes = result["rows"][0]["axes"]
+    assert axes["price_usd"]["verdict"] == "우위"  # 더 쌈
+    assert axes["pod_count"]["verdict"] == "우위"  # POD 더 많음
+    assert "가격" in result["strengths"]
+    assert "POD(차별점) 개수" in result["strengths"]
+
+
+def test_차이가_8퍼센트_이내면_동등으로_본다(fake_web):
+    _seed_bm_product("https://a.example/target", price_usd=1000.0)
+    _seed_bm_product("https://a.example/peer", price_usd=1050.0)  # 5% 차이
+
+    result = service.benchmark("https://a.example/target")
+    assert result["rows"][0]["axes"]["price_usd"]["verdict"] == "동등"
+
+
+def test_사람이_넣은_평가_점수가_페이지_평점보다_우선한다(fake_web):
+    _seed_bm_product("https://a.example/target", rating_value=9.0, rating_scale=10.0)
+    service.set_review_score("https://a.example/target", "Consumer Reports", 4.9, 5.0)
+    _seed_bm_product("https://a.example/peer", rating_value=4.0, rating_scale=5.0)
+
+    result = service.benchmark("https://a.example/target")
+    # review_score(4.9/5) 를 썼다면 4.0/5보다 우위, rating_value(9/10=4.5/5) 를 썼어도 우위지만
+    # 값 자체가 4.9로 반영됐는지 확인합니다.
+    assert result["target"]["price_usd"] == 800.0
+    axes = result["rows"][0]["axes"]
+    assert axes["rating"]["target"] == pytest.approx(4.9)
+    assert axes["rating"]["verdict"] == "우위"
+
+
+def test_평점이_아예_없으면_그_축은_비교불가다(fake_web):
+    _seed_bm_product("https://a.example/target")
+    _seed_bm_product("https://a.example/peer")
+
+    result = service.benchmark("https://a.example/target")
+    assert result["rows"][0]["axes"]["rating"]["verdict"] == "비교불가"
+
+
+def test_강점과_약점이_섞여도_따로_집계된다(fake_web):
+    _seed_bm_product("https://a.example/target", price_usd=1200.0, pods=["a", "b"])
+    _seed_bm_product("https://a.example/cheaper", price_usd=800.0, pods=[])
+    _seed_bm_product("https://a.example/pricier", price_usd=2000.0, pods=[])
+
+    result = service.benchmark("https://a.example/target")
+    # 대상보다 싼 경쟁자 하나(가격 열세), 비싼 경쟁자 하나(가격 우위) → 팽팽하니 가격은 강점도 약점도 아님
+    assert "가격" not in result["strengths"]
+    assert "가격" not in result["weaknesses"]
+    # POD는 둘 다한테 우위 → 강점
+    assert "POD(차별점) 개수" in result["strengths"]
 
 

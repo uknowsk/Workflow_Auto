@@ -56,6 +56,10 @@ def _brief(product: dict) -> dict:
         "pods": product.get("pods", []),
         "ai_features": product.get("ai_features", []),
         "energy_rating": product.get("energy_rating") or "",
+        "rating_value": product.get("rating_value"),
+        "rating_scale": product.get("rating_scale"),
+        "review_source": product.get("review_source"),
+        "review_score": product.get("review_score"),
         "key_specs": dict(list(specs.items())[:8]),
         "url": product.get("url"),
     }
@@ -104,6 +108,44 @@ def compare_by_price(region: str = "", category: str = "cooking", mode: str = "f
         band["products"] = [_brief(p) for p in band["products"]]
     result["unpriced"] = [_brief(p) for p in result["unpriced"]]
     return result
+
+
+@mcp.tool()
+def benchmark_product(url: str) -> dict:
+    """이 제품(BM 대상)을 같은 가격대의 다른 제품들과 축마다 우위·동등·열세로 견줍니다.
+
+    비교 축: 가격, POD(차별점) 개수, 평가 점수(제품 페이지 고객 평점 또는
+    set_review_score 로 넣은 제3자 점수를 5점 만점으로 환산), 에너지 인증 유무,
+    AI·연결 기능 개수. 우위가 많은 축은 strengths(강점), 열세가 많은 축은
+    weaknesses(약점)로 정리해서 같이 돌려줍니다.
+
+    Args:
+        url: 견줄 제품의 주소. list_products 나 compare_by_price 결과의 url 을 씁니다.
+    """
+    try:
+        return service.benchmark(url)
+    except ValueError as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+@mcp.tool()
+def set_review_score(url: str, source: str, score: float, scale: float = 5.0) -> dict:
+    """Consumer Reports 처럼 구독이 있어야 보이는 제3자 평가 점수를 사람이 직접 입력합니다.
+
+    이 앱은 그런 곳을 대신 긁어오지 않습니다(구독 벽 뒤 데이터라 기술이 아니라
+    약관 문제입니다). 여기로 넣은 점수는 benchmark_product 의 "평가 점수" 축에서
+    제품 페이지 자체 고객 평점보다 우선해서 쓰입니다.
+
+    Args:
+        url: 점수를 붙일 제품의 주소
+        source: 평가한 곳 이름. 예) "Consumer Reports"
+        score: 점수(숫자)
+        scale: 만점 기준. 기본 5(5점 만점). Consumer Reports 는 보통 100점 만점입니다.
+    """
+    try:
+        return {"ok": True, "product": service.set_review_score(url, source, score, scale)}
+    except ValueError as exc:
+        return {"ok": False, "error": str(exc)}
 
 
 @mcp.tool()
@@ -260,6 +302,28 @@ async def api_compare(request: Request):
         q.get("only_new", "") == "true",
     )
     return JSONResponse(result)
+
+
+@mcp.custom_route("/api/benchmark", methods=["GET"])
+async def api_benchmark(request: Request):
+    url = request.query_params.get("url", "")
+    try:
+        result = service.benchmark(url)
+    except ValueError as exc:
+        return JSONResponse({"ok": False, "error": str(exc)}, status_code=400)
+    return JSONResponse(result)
+
+
+@mcp.custom_route("/api/review-score", methods=["POST"])
+async def api_review_score(request: Request):
+    body = await _body(request)
+    try:
+        product = service.set_review_score(
+            body.get("url", ""), body.get("source", ""), body.get("score"), body.get("scale") or 5.0
+        )
+    except ValueError as exc:
+        return JSONResponse({"ok": False, "error": str(exc)}, status_code=400)
+    return JSONResponse({"ok": True, "product": product})
 
 
 @mcp.custom_route("/api/sources", methods=["GET", "POST"])

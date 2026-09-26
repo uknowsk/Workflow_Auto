@@ -72,6 +72,18 @@
     border-radius: 5px; padding: 1px 6px; margin-left: 6px; vertical-align: middle;
   }
   footer { text-align: center; color: var(--muted); font-size: 11px; padding: 20px; }
+  .product .bmBtn { margin-top: 6px; font-size: 12px; padding: 3px 9px; }
+  .verdict { font-size: 11px; font-weight: 700; border-radius: 6px; padding: 1px 7px; }
+  .verdict.win { background: #f0fdf4; color: var(--ok); }
+  .verdict.tie { background: #eef2f1; color: var(--muted); }
+  .verdict.lose { background: #fef2f2; color: var(--danger); }
+  .verdict.na { background: #f3f4f6; color: var(--muted); }
+  .bm-table { width: 100%; border-collapse: collapse; font-size: 12.5px; margin-top: 8px; }
+  .bm-table th, .bm-table td { border-bottom: 1px solid var(--line); padding: 5px 6px; text-align: left; }
+  .bm-peer-row td:first-child { font-weight: 600; }
+  .sw-line { margin: 4px 0; font-size: 13px; }
+  .sw-line .win { color: var(--ok); font-weight: 600; }
+  .sw-line .lose { color: var(--danger); font-weight: 600; }
 </style>
 </head>
 <body>
@@ -135,6 +147,7 @@
     <pre class="log" id="log"></pre>
   </div>
 
+  <div id="bmPanel"></div>
   <div id="results"></div>
 </main>
 <footer>appliance_watch · 단독 실행 화면 · 스펙 비교표·주기 감시·출처 관리는 Workflow_Auto 통합 화면에서 이용하세요</footer>
@@ -257,7 +270,75 @@ function productView(p) {
       ${p.energy_rating ? `<div class="muted">⚡ ${esc(p.energy_rating)}</div>` : ""}
       ${pods ? `<div class="muted" style="margin-top:6px;">POD (${p.pod_method === "llm" ? "LLM" : "규칙"})</div><ul>${pods}</ul>` : ""}
       ${ai ? `<div class="muted" style="margin-top:6px;">🤖 AI·연결 기능 (${p.ai_method === "llm" ? "LLM" : "규칙"})</div><ul>${ai}</ul>` : ""}
+      <div><button class="ghost bmBtn" data-url="${esc(p.url)}">🎯 같은 가격대와 견주기(BM)</button></div>
     </div>`;
+}
+
+function verdictBadge(v) {
+  const cls = v === "우위" ? "win" : v === "동등" ? "tie" : v === "열세" ? "lose" : "na";
+  return `<span class="verdict ${cls}">${esc(v)}</span>`;
+}
+
+function bmAxisRow(row) {
+  const axes = ["price_usd", "pod_count", "rating", "energy", "ai_count"];
+  return `<tr class="bm-peer-row">
+    <td>${esc(row.maker || "")} ${esc(row.name || row.model || "")}<br>
+      <a href="${esc(row.url)}" target="_blank" rel="noreferrer" class="muted">열기</a></td>
+    ${axes.map((a) => `<td>${verdictBadge(row.axes[a].verdict)}</td>`).join("")}
+  </tr>`;
+}
+
+async function showBenchmark(url) {
+  showError(""); showMessage("");
+  try {
+    const bm = await api(`/api/benchmark?url=${encodeURIComponent(url)}`);
+    const axes = [["price_usd", "가격"], ["pod_count", "POD"], ["rating", "평가 점수"], ["energy", "에너지"], ["ai_count", "AI기능"]];
+    $("bmPanel").innerHTML = `
+      <div class="card" id="bmCard">
+        <div class="row between">
+          <b>🎯 BM 비교 · ${esc(bm.target.name || bm.target.model || "")} <span class="muted">(${esc(bm.target.band || "")} 가격대, 경쟁 제품 ${bm.peer_count}개)</span></b>
+          <button class="ghost" id="bmCloseBtn">닫기</button>
+        </div>
+        ${bm.strengths.length ? `<div class="sw-line">강점: ${bm.strengths.map((s) => `<span class="win">${esc(s)}</span>`).join(", ")}</div>` : ""}
+        ${bm.weaknesses.length ? `<div class="sw-line">약점: ${bm.weaknesses.map((s) => `<span class="lose">${esc(s)}</span>`).join(", ")}</div>` : ""}
+        ${!bm.strengths.length && !bm.weaknesses.length ? `<div class="muted sw-line">뚜렷한 강점·약점 없이 팽팽합니다.</div>` : ""}
+        ${bm.peer_count ? `
+        <table class="bm-table">
+          <thead><tr><th>경쟁 제품</th>${axes.map(([, label]) => `<th>${esc(label)}</th>`).join("")}</tr></thead>
+          <tbody>${bm.rows.map(bmAxisRow).join("")}</tbody>
+        </table>` : `<div class="muted">같은 대륙·품목·가격대에 견줄 다른 제품이 아직 없습니다.</div>`}
+        <div class="row" style="margin-top:12px; align-items:flex-end;">
+          <div class="field">
+            <label>제3자 평가 점수 넣기 <span class="muted">(예: Consumer Reports — 구독 벽 뒤라 직접 입력만 지원)</span></label>
+            <div class="row">
+              <input id="rvSource" placeholder="평가한 곳 (예: Consumer Reports)" style="width:200px;">
+              <input id="rvScore" type="number" step="0.1" placeholder="점수">
+              <input id="rvScale" type="number" step="0.5" placeholder="만점(기본 5)" style="width:110px;">
+              <button id="rvSaveBtn">저장</button>
+            </div>
+          </div>
+        </div>
+      </div>`;
+    $("bmCloseBtn").addEventListener("click", () => { $("bmPanel").innerHTML = ""; });
+    $("rvSaveBtn").addEventListener("click", async () => {
+      try {
+        await api("/api/review-score", {
+          method: "POST", headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            url, source: $("rvSource").value.trim(),
+            score: Number($("rvScore").value), scale: Number($("rvScale").value) || 5,
+          }),
+        });
+        showMessage("평가 점수를 저장했습니다.");
+        await showBenchmark(url);
+      } catch (e) {
+        showError(String(e.message || e));
+      }
+    });
+    $("bmCard").scrollIntoView({ behavior: "smooth", block: "start" });
+  } catch (e) {
+    showError(String(e.message || e));
+  }
 }
 
 async function reloadCompare() {
@@ -303,6 +384,10 @@ async function scan() {
 
 $("scanBtn").addEventListener("click", scan);
 $("addBrandBtn").addEventListener("click", addBrand);
+$("results").addEventListener("click", (e) => {
+  const btn = e.target.closest(".bmBtn");
+  if (btn) showBenchmark(btn.dataset.url);
+});
 
 (async function init() {
   try {
