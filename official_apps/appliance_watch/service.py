@@ -160,16 +160,22 @@ def _scan_maker(maker: dict, region: str, category: str, limit: int, log: list[s
 
     products = []
     seen_models: set[str] = set()
-    for cand in disc.candidates[: limit * 3]:
+    # 사이트맵에는 이미 단종된 제품 주소가 오래 남아 있기도 해서(읽어도 진짜
+    # 제품 정보가 안 나옴), 목표 개수의 3배보다 넉넉하게 시도합니다.
+    window = max(limit * 3, min(len(disc.candidates), 40))
+    dead_ends = 0
+    for cand in disc.candidates[:window]:
         if len(products) >= limit:
             break
         try:
             html = web.fetch_text(cand.url)
         except Exception as exc:
             log.append(f"[{maker['name']}] 열지 못함: {exc}")
+            dead_ends += 1
             continue
         product = extract.extract_product(html, cand.url, currency)
         if not product:
+            dead_ends += 1
             continue
         # 같은 제품이 주소 두 개로 올라오는 사이트가 있습니다(Whirlpool: p.모델.html 과 긴 이름 주소).
         # 모델명이 같으면 한 번만 셉니다.
@@ -191,7 +197,7 @@ def _scan_maker(maker: dict, region: str, category: str, limit: int, log: list[s
             }
         )
         products.append(product)
-    log.append(f"[{maker['name']}] 제품 {len(products)}개 정리")
+    log.append(f"[{maker['name']}] 제품 {len(products)}개 정리 (막힌 주소 {dead_ends}곳)")
     return products
 
 

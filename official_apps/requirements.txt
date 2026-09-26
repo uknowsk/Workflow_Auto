@@ -9,3 +9,8 @@ python-pptx==1.0.2
 # 세계 시계용 시간대 정보 (slim 이미지에는 없습니다)
 tzdata==2024.2
 beautifulsoup4==4.12.3
+# 가전 신제품 조사 앱: 봇 차단(예: GE - Akamai) 사이트는 이 라이브러리로 진짜
+# 브라우저를 띄워 한 번 더 시도합니다. pip install 만으로는 부족하고
+# `playwright install chromium` 으로 브라우저 실행 파일도 받아야 동작합니다.
+# 안 깔려 있어도 나머지 앱과 이 앱의 나머지 기능은 그대로 돌아갑니다.
+playwright==1.63.0

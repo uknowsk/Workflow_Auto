@@ -6,9 +6,11 @@
 """
 from __future__ import annotations
 
+import html
 import json
 import re
 from typing import Any
+from urllib.parse import urlparse
 
 from bs4 import BeautifulSoup
 
@@ -22,6 +24,10 @@ _NEW_BADGE = re.compile(
     re.I,
 )
 _PRICE_NUMBER = re.compile(r"\d[\d.,\s ]*")
+# GE 처럼 og:title 안에 이름과 모델명을 "이름|^|모델" 로 붙여 놓는 사이트가 있습니다.
+_TITLE_MODEL_GLUE = re.compile(r"\s*\|\^\|\s*")
+# 모델명은 보통 영문+숫자가 섞인 5자 이상 토막입니다(WFGS7530RZ, JBP27DMWW).
+_MODEL_LIKE = re.compile(r"^(?=[a-z0-9-]*\d)(?=[a-z0-9-]*[a-z])[a-z0-9-]{5,}$", re.I)
 
 
 # ── 가격 글자 → 숫자 ────────────────────────────────────────────────────
@@ -44,9 +50,11 @@ def parse_price(value: Any, default_currency: str = "USD") -> tuple[float | None
     if not match:
         return None, currency
     number = re.sub(r"[\s ]", "", match.group(0)).strip(".,")
-    # 마지막 구분 기호 뒤가 2자리면 소수점, 아니면 천 단위 구분으로 봅니다.
+    # 마지막 구분 기호 뒤가 1~2자리면 소수점(JSON의 '1099.0'도 포함), 3자리
+    # 이상이면 천 단위 구분(유럽식 '1.099' = 1099)으로 봅니다. 천 단위 구분은
+    # 항상 3자리씩 묶이므로 1자리만 남는 경우는 없고, 소수점이 짧게 잘린 경우만 남습니다.
     last = max(number.rfind(","), number.rfind("."))
-    if last != -1 and len(number) - last - 1 == 2:
+    if last != -1 and len(number) - last - 1 in (1, 2):
         whole = re.sub(r"[.,]", "", number[:last])
         number = f"{whole}.{number[last + 1:]}"
     else:
@@ -90,11 +98,22 @@ def _first(value: Any) -> Any:
     return value[0] if isinstance(value, list) and value else value
 
 
+def _unescape(text: str) -> str:
+    """일부 사이트는 og:title 같은 곳에 &amp;#34; 처럼 두 번 겹쳐 인코딩해 둡니다
+    (예: Whirlpool 의 30&#34; → 풀어야 30" 가 됩니다). 더는 안 바뀔 때까지 풉니다."""
+    for _ in range(3):
+        unescaped = html.unescape(text)
+        if unescaped == text:
+            break
+        text = unescaped
+    return text
+
+
 def _text(value: Any) -> str:
     value = _first(value)
     if isinstance(value, dict):
         value = value.get("name") or value.get("url") or value.get("@id") or ""
-    return re.sub(r"\s+", " ", str(value or "")).strip()
+    return _unescape(re.sub(r"\s+", " ", str(value or "")).strip())
 
 
 # ── 화면에 보이는 표와 목록 ────────────────────────────────────────────
@@ -143,7 +162,7 @@ def _meta(soup: BeautifulSoup, *names: str) -> str:
     for name in names:
         tag = soup.find("meta", attrs={"property": name}) or soup.find("meta", attrs={"name": name})
         if tag and tag.get("content"):
-            return tag["content"].strip()
+            return _unescape(tag["content"].strip())
     return ""
 
 
@@ -154,14 +173,44 @@ def _itemprop(soup: BeautifulSoup, name: str) -> str:
     return (tag.get("content") or tag.get_text(" ", strip=True) or "").strip()
 
 
+def _split_title_model(name: str) -> tuple[str, str]:
+    """"이름|^|모델" 처럼 붙어 있으면 (이름, 모델) 로 나눕니다. 안 붙어 있으면 (이름, "")."""
+    parts = _TITLE_MODEL_GLUE.split(name, maxsplit=1)
+    if len(parts) == 2:
+        return parts[0].strip(), parts[1].strip()
+    return name, ""
+
+
+def _model_from_url(url: str) -> str:
+    """모델명이 주소 끝에 붙어 있는 사이트가 많습니다.
+
+    예) .../GE-30-Free-Standing-Electric-Range-JBP27DMWW → JBP27DMWW
+        .../p.30-inch-gas-cooktop....wcgk5030ps.html → WCGK5030PS
+    """
+    last = ([seg for seg in urlparse(url).path.split("/") if seg] or [""])[-1]
+    stem = re.sub(r"\.(html?|php|aspx?|jsp)$", "", last, flags=re.I)
+    for token in re.split(r"[.-]", stem):
+        if _MODEL_LIKE.match(token) and any(c.isdigit() for c in token) and any(c.isalpha() for c in token):
+            return token.upper()
+    return ""
+
+
 # ── 한 페이지 전체 ─────────────────────────────────────────────────────
 def extract_product(html: str, url: str, default_currency: str = "USD") -> dict | None:
     """제품 페이지면 정리한 dict, 제품 페이지가 아니면 None."""
     soup = BeautifulSoup(html, "html.parser")
     ld = _json_ld_product(soup)
 
-    name = _text(ld.get("name")) or _meta(soup, "og:title") or _text(soup.title.string if soup.title else "")
-    model = _text(ld.get("model")) or _text(ld.get("mpn")) or _text(ld.get("sku")) or _itemprop(soup, "sku")
+    raw_name = _text(ld.get("name")) or _meta(soup, "og:title") or _text(soup.title.string if soup.title else "")
+    name, glued_model = _split_title_model(raw_name)
+    model = (
+        _text(ld.get("model"))
+        or _text(ld.get("mpn"))
+        or _text(ld.get("sku"))
+        or _itemprop(soup, "sku")
+        or glued_model
+        or _model_from_url(url)
+    )
 
     offers = _first(ld.get("offers")) or {}
     if isinstance(offers, dict) and offers.get("@type", "").lower() == "aggregateoffer":
@@ -175,6 +224,8 @@ def extract_product(html: str, url: str, default_currency: str = "USD") -> dict 
             soup, "priceCurrency"
         )
     price, guessed = parse_price(raw_price, currency or default_currency)
+    if price is not None and price <= 0:
+        price = None  # $0 은 진짜 가격이 아니라 "단종/가격 없음" 표시로 쓰는 사이트가 있습니다.
     currency = (currency or guessed).upper()
 
     specs: dict[str, str] = {}

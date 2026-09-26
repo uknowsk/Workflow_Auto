@@ -24,6 +24,9 @@ _STOP = {
     "the", "and", "with", "for", "your", "you", "that", "this", "from", "into", "more",
     "less", "our", "are", "all", "can", "has", "have", "its", "any", "per", "not",
 }
+# "OO는 최고의 가전을 만드는 회사입니다" 같은 사이트 공통 소개 문구는 이 제품만의
+# 특징이 아닙니다. 숫자나 단위(용량, 와트, 인치 ...)가 있어야 제품 얘기로 봅니다.
+_PRODUCT_SPECIFIC = re.compile(r"\d|cu\.?\s*ft|watt|btu|liter|inch|volt|amp|리터|인치|와트", re.I)
 
 
 def _words(text: str) -> set[str]:
@@ -32,8 +35,9 @@ def _words(text: str) -> set[str]:
 
 def _lines(product: dict) -> list[str]:
     lines = list(product.get("features") or [])
-    if not lines and product.get("description"):
-        lines = [s.strip() for s in re.split(r"(?<=[.!?])\s+", product["description"]) if len(s) > 15]
+    description = product.get("description") or ""
+    if not lines and description and _PRODUCT_SPECIFIC.search(description):
+        lines = [s.strip() for s in re.split(r"(?<=[.!?])\s+", description) if len(s) > 15]
     return lines
 
 

@@ -145,6 +145,67 @@ def test_가격_글자를_나라별_모양대로_읽는다():
     assert extract.parse_price("", "AUD") == (None, "AUD")
 
 
+def test_소수점_한_자리짜리_JSON_가격을_10배로_부풀리지_않는다():
+    # JSON-LD offers.price 는 "1099.0" 처럼 소수점 뒤가 한 자리인 경우가 흔합니다.
+    # 예전 규칙은 이걸 천 단위 구분으로 오해해서 10990.0 으로 읽었습니다.
+    assert extract.parse_price("1099.0") == (1099.0, "USD")
+    assert extract.parse_price("1199.2") == (1199.2, "USD")
+    # 유럽식 천 단위 구분(점 뒤 세 자리)은 여전히 정수로 읽습니다.
+    assert extract.parse_price("1.099", "EUR") == (1099.0, "EUR")
+
+
+def test_GE처럼_이름과_모델이_og_title에_붙어있으면_나눠서_읽는다():
+    # GE 는 JSON-LD 제품 카드가 없고, og:title 이 "이름|^|모델" 로 붙어 있습니다.
+    # 모델명이 따로 없으면 주소 끝(URL 슬러그)에서도 찾아봅니다.
+    html = (
+        "<html><head>"
+        "<meta property='og:title' content='GE® 30\" Free-Standing Electric Range|^|JBP27DMWW'>"
+        "<meta property='product:price:amount' content='599'>"
+        "<meta property='product:price:currency' content='USD'>"
+        "</head><body><table><tr><th>Capacity</th><td>5.0 cu. ft.</td></tr>"
+        "<tr><th>Fuel</th><td>Electric</td></tr><tr><th>Width</th><td>30 in</td></tr></table></body></html>"
+    )
+    url = "https://www.geappliances.com/appliance/GE-30-Free-Standing-Electric-Range-JBP27DMWW"
+    product = extract.extract_product(html, url)
+    assert product["name"] == 'GE® 30" Free-Standing Electric Range'
+    assert product["model"] == "JBP27DMWW"
+    assert product["price"] == 599.0
+
+
+def test_두번_겹쳐_인코딩된_글자도_풀어서_읽는다():
+    # Whirlpool 의 og:title 은 30&#34; 처럼 큰따옴표가 두 번 겹쳐 인코딩돼 있습니다
+    # (원래 30" 인데 &#34; 로 한 번, 그 &amp;#34; 로 한 번 더).
+    html_src = (
+        "<html><head><meta property='og:title' content='30&amp;#34; Induction Cooktop|^|WCIT7530SB'>"
+        "<meta property='product:price:amount' content='1099'>"
+        "<meta property='product:price:currency' content='USD'></head>"
+        "<body><table><tr><th>Capacity</th><td>1.8 cu. ft.</td></tr>"
+        "<tr><th>Fuel</th><td>Electric</td></tr><tr><th>Width</th><td>30 in</td></tr></table></body></html>"
+    )
+    product = extract.extract_product(html_src, "https://www.whirlpool.com/x/p.a.wcit7530sb.html")
+    assert product["name"] == '30" Induction Cooktop'
+
+
+def test_주소_끝_모델명으로도_찾는다():
+    assert extract._model_from_url(
+        "https://www.whirlpool.com/kitchen/cooking/cooktops/4-burner-elements/"
+        "p.30-inch-gas-cooktop-with-ez-2-lift-hinged-cast-iron-grates.wcgk5030ps.html"
+    ) == "WCGK5030PS"
+
+
+def test_가격_0원은_가격_없음으로_본다():
+    # 일부 제조사는 단종되거나 안 파는 제품을 가격 0으로 표시합니다.
+    html = (
+        "<html><head><meta property='og:title' content='Old Model|^|JVM1871SH'>"
+        "<meta property='product:price:amount' content='0'>"
+        "<meta property='product:price:currency' content='USD'></head>"
+        "<body><table><tr><th>Capacity</th><td>1.8 cu. ft.</td></tr>"
+        "<tr><th>Fuel</th><td>Electric</td></tr><tr><th>Width</th><td>30 in</td></tr></table></body></html>"
+    )
+    product = extract.extract_product(html, "https://www.geappliances.com/appliance/x-JVM1871SH")
+    assert product["price"] is None
+
+
 def test_품목은_낱말_단위로_알아본다():
     assert catalog.category_of("/appliances/ranges/gas-range-x") == "cooking"
     assert catalog.category_of("/four-door-refrigerator") == "refrigerator"
@@ -169,6 +230,19 @@ def test_POD는_경쟁사에_없는_특징을_고른다():
     me = {"features": ["Edge-to-edge cooktop", "Built-in air fry with no preheat"]}
     peers = [{"features": ["Edge-to-edge cooktop", "Self-clean oven"]}]
     assert pod.heuristic_pods(me, peers, limit=1) == ["Built-in air fry with no preheat"]
+
+
+def test_특징_목록이_없으면_사이트_소개문구를_POD로_쓰지_않는다():
+    # GE 처럼 특징 목록이 안 잡히고 og:description 이 사이트 공통 소개문구뿐인 경우,
+    # "GE Appliances is your home for..." 같은 문장을 차별점으로 보여주면 안 됩니다.
+    me = {
+        "description": "GE Appliances is your home for the best kitchen appliances, home products, "
+        "parts and accessories, and support."
+    }
+    assert pod.heuristic_pods(me, peers=[], limit=3) == []
+    # 반대로 숫자·단위가 있어 이 제품 얘기임을 알 수 있으면 그대로 씁니다.
+    specific = {"description": "5.3 cu. ft. capacity with Frozen Bake technology skips preheating."}
+    assert pod.heuristic_pods(specific, peers=[], limit=3)
 
 
 # ── 출처 찾기 ─────────────────────────────────────────────────────────
