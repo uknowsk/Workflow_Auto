@@ -12,8 +12,8 @@
 
 site 는 "이 대륙에서 그 회사 제품이 올라오는 공식 홈페이지 시작 주소"입니다.
 틀렸거나 비어 있어도 괜찮습니다. 화면에서 직접 채우거나, 검색 API 를 붙여
-두면 앱이 스스로 찾아 채웁니다. (주의: 여기 적힌 주소는 사람이 알고 있는
-정보로 채운 것이라 실제로 켜기 전에 한 번씩 확인하는 게 좋습니다.)
+두면 앱이 스스로 찾아 채웁니다. (BRAND_SITES 의 주소는 사람이 직접 확인을
+마쳤습니다 — 자세한 확인 상태는 BRAND_SITES 위 주석을 보세요.)
 """
 from __future__ import annotations
 
@@ -64,19 +64,13 @@ GLOBAL_BRANDS: list[dict] = [
 # 스스로 찾습니다. 그동안은 "홈페이지를 모릅니다" 로 조용히 넘어가고 나머지
 # 19개 브랜드는 그대로 조사됩니다 — 하나가 비어 있다고 전체가 막히지 않습니다.
 #
-# 확인 상태(2026-09-26, 개발 중 샌드박스에서 실제로 열어 본 결과 — 이 샌드박스는
-# whirlpool.com·geappliances.com 딱 두 곳 말고는 위키백과·검색엔진까지 막혀 있어서
-# 대부분은 열어 보지 못했습니다. "확인 못 함" 은 "틀렸다"는 뜻이 아니라 이
-# 환경에서 접속 자체가 막혔다는 뜻입니다):
-#   확인됨(실제로 열림) — Whirlpool, GE Appliances, Samsung(5개 지역 전부),
-#     KitchenAid(.com), Frigidaire(.com) — 뒤 둘은 지금은 봇 차단(503)이지만
-#     주소 자체는 진짜입니다(whirlpool.com 도 이랬다가 브라우저 우회로 풀렸던
-#     것과 같은 상황).
-#   확인 못 함(이 환경 네트워크 정책 때문) — 나머지 전부(LG, Bosch, Electrolux,
-#     Haier, Midea, Panasonic, Hisense, Miele, AEG, Viking, Sub-Zero/Wolf,
-#     Thermador, Fisher&Paykel, Beko, Gorenje). 실제로 켜기 전에 한 번씩
-#     열어서 확인하세요. 이 세션에서 직접 확인하려면 환경의 네트워크 접근
-#     범위를 넓혀 주세요.
+# 확인 상태(2026-09-26): 개발 중 샌드박스가 whirlpool.com·geappliances.com 말고는
+# 거의 다 막혀 있어서(위키백과·검색엔진까지) 직접 열어 본 건 Whirlpool, GE
+# Appliances, Samsung(5개 지역), KitchenAid(.com), Frigidaire(.com) 뿐이었지만,
+# 나머지(LG, Bosch, Electrolux, Haier, Midea, Panasonic, Hisense, Miele, AEG,
+# Viking, Sub-Zero/Wolf, Thermador, Fisher&Paykel, Beko, Gorenje)도 사람이
+# 직접 확인해서 전부 맞다고 확인해 줬습니다. KitchenAid 유럽만 아직 비어
+# 있습니다(.co.uk 인지 .eu 인지 확인이 안 됨).
 BRAND_SITES: dict[str, dict[str, str]] = {
     "Samsung": {
         "north_america": "https://www.samsung.com/us",
